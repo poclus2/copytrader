@@ -1,0 +1,24 @@
+graph TD
+    User[User / Admin] -->|HTTPS| UI[React Admin UI]
+    User -->|HTTPS| API[API Gateway / NestJS]
+    
+    UI -->|REST/WS| API
+    
+    subgraph Backend
+        API --> Auth[Auth Module]
+        API --> Masters[Masters Module]
+        API --> Slaves[Slaves Module]
+        API --> Copy[Copy Engine]
+        
+        Copy -->|Read| DB[(PostgreSQL)]
+        Copy -->|Publish| MQ[RabbitMQ]
+        Copy -->|Cache| Redis[(Redis)]
+        
+        Worker[Worker Service] -->|Consume| MQ
+        Worker -->|Execute| Adapter[Broker Adapter]
+    end
+    
+    subgraph External
+        Adapter -->|API| Binance[Binance]
+        Adapter -->|API| MT4[MetaTrader 4]
+    end

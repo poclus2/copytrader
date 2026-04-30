@@ -1,0 +1,139 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Premium Fintech Copy Trading Design System - All colors in HSL */
+
+@layer base {
+  :root {
+    /* Primary Dark Blue - Global Background */
+    --background: 221 55% 13%;
+    --foreground: 0 0% 100%;
+
+    /* Cards - Slate Blue */
+    --card: 222 42% 17%;
+    --card-foreground: 0 0% 94%;
+
+    /* Primary Turquoise - CTA & Highlights */
+    --primary: 168 79% 51%;
+    --primary-foreground: 221 55% 13%;
+
+    /* Secondary Accent Mint */
+    --secondary: 168 67% 57%;
+    --secondary-foreground: 221 55% 13%;
+
+    /* Muted - Subtle backgrounds */
+    --muted: 222 35% 20%;
+    --muted-foreground: 220 10% 60%;
+
+    /* Accent - Highlights */
+    --accent: 168 79% 51%;
+    --accent-foreground: 221 55% 13%;
+
+    /* Destructive - Error Red */
+    --destructive: 0 84% 66%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Success Green */
+    --success: 158 64% 52%;
+    --success-foreground: 0 0% 100%;
+
+    /* Warning Yellow */
+    --warning: 45 93% 58%;
+    --warning-foreground: 221 55% 13%;
+
+    /* Borders & Inputs */
+    --border: 222 30% 25%;
+    --input: 0 0% 94%;
+    --input-bg: 0 0% 94%;
+    --input-text: 221 55% 13%;
+    --ring: 168 79% 51%;
+
+    /* Soft Text */
+    --soft-text: 220 15% 56%;
+
+    /* Radius System */
+    --radius: 0.875rem;
+    --radius-card: 1.125rem;
+    --radius-button: 0.875rem;
+
+    /* Spacing */
+    --spacing-unit: 8px;
+
+    /* Shadows */
+    --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.08);
+    --shadow-hover: 0 8px 24px rgba(33, 225, 179, 0.12);
+
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(168, 79%, 51%) 0%, hsl(168, 67%, 57%) 100%);
+    --gradient-chart: linear-gradient(180deg, hsla(168, 79%, 51%, 0.2) 0%, hsla(168, 79%, 51%, 0) 100%);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-feature-settings: "tnum" 1;
+  }
+
+  h1 {
+    @apply text-[26px] font-bold leading-tight;
+  }
+
+  h2 {
+    @apply text-[22px] font-semibold leading-tight;
+  }
+
+  h3 {
+    @apply text-[18px] font-medium leading-tight;
+  }
+
+  .caption {
+    @apply text-[13px] text-soft-text;
+  }
+
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  .card-trader {
+    @apply bg-card rounded-[--radius-card] p-4 shadow-[--shadow-card] border border-border;
+  }
+
+  .card-portfolio {
+    @apply bg-card rounded-[--radius-card] p-6 shadow-[--shadow-card] border border-border;
+  }
+
+  .status-profit {
+    @apply inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-success/10 text-success border border-success/20;
+  }
+
+  .status-loss {
+    @apply inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-destructive/10 text-destructive border border-destructive/20;
+  }
+
+  .status-risk {
+    @apply inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-warning/10 text-warning border border-warning/20;
+  }
+
+  .status-neutral {
+    @apply inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-muted text-muted-foreground border border-border;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}

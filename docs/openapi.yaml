@@ -1,0 +1,143 @@
+openapi: 3.0.0
+info:
+  title: Copy Trading API
+  version: 1.0.0
+  description: API for managing copy trading system, masters, slaves, and orders.
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Local server
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Master:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        broker:
+          type: string
+    Slave:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        broker:
+          type: string
+        config:
+          type: object
+    Order:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        symbol:
+          type: string
+        side:
+          type: string
+          enum: [BUY, SELL]
+        quantity:
+          type: number
+        status:
+          type: string
+paths:
+  /auth/login:
+    post:
+      summary: Login
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+      responses:
+        '200':
+          description: JWT Token
+  /masters:
+    get:
+      summary: List masters
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of masters
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Master'
+    post:
+      summary: Create master
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Master'
+      responses:
+        '201':
+          description: Created
+  /slaves:
+    get:
+      summary: List slaves
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of slaves
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Slave'
+    post:
+      summary: Create slave
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Slave'
+      responses:
+        '201':
+          description: Created
+  /copy/start:
+    post:
+      summary: Start copying
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                masterId:
+                  type: string
+                slaveIds:
+                  type: array
+                  items:
+                    type: string
+                mode:
+                  type: string
+      responses:
+        '200':
+          description: Copying started
