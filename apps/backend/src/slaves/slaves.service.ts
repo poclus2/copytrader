@@ -45,6 +45,7 @@ export class SlavesService {
       status: initialStatus,
       master: { id: masterId },
       user: { id: userId }
+    });
     const savedSlave = await this.slavesRepository.save(slave);
 
     // Si c'est un compte MetaTrader, lancer la création dynamique Docker

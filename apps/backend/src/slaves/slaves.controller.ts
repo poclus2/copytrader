@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Req, UseGuards, Query } from '@nestjs/common';
 import { SlavesService } from './slaves.service';
 import { CreateSlaveDto } from './dto/create-slave.dto';
 import { UpdateSlaveDto } from './dto/update-slave.dto';

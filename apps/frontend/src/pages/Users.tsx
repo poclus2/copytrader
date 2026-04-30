@@ -1,94 +1,158 @@
-import { useQuery } from '@tanstack/react-query';
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
-import { Link } from 'react-router-dom';
-import { Search, User as UserIcon, Wallet } from 'lucide-react';
+import { Users, Search, RefreshCw, ChevronRight, DollarSign, Activity, Plus } from 'lucide-react';
 
 interface User {
     id: string;
     email: string;
-    username: string;
-    role: string;
-    walletBalance: string;
-    createdAt: string;
+    firstName?: string;
+    lastName?: string;
+    role?: string;
+    createdAt?: string;
+    balance?: number;
 }
 
-const Users = () => {
-    const { data: users, isLoading } = useQuery({
-        queryKey: ['users'],
-        queryFn: async () => {
-            const { data } = await api.get<User[]>('/users');
-            return data;
-        },
-    });
+export default function Users() {
+    const navigate = useNavigate();
+    const [users, setUsers] = useState<User[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [search, setSearch] = useState('');
 
-    if (isLoading) return <div>Chargement...</div>;
+    useEffect(() => { fetchUsers(); }, []);
+
+    const fetchUsers = async () => {
+        setLoading(true);
+        try { const r = await api.get<User[]>('/users'); setUsers(r.data); }
+        catch { /* silent */ } finally { setLoading(false); }
+    };
+
+    const getInitials = (u: User) => {
+        if (u.firstName && u.lastName) return `${u.firstName[0]}${u.lastName[0]}`.toUpperCase();
+        return u.email[0].toUpperCase();
+    };
+
+    const getRoleBadge = (role: string = 'user') => {
+        if (role === 'admin') return 'badge badge-active';
+        return 'badge badge-standard';
+    };
+
+    const filtered = users.filter(u =>
+        u.email.toLowerCase().includes(search.toLowerCase()) ||
+        (u.firstName || '').toLowerCase().includes(search.toLowerCase()) ||
+        (u.lastName || '').toLowerCase().includes(search.toLowerCase())
+    );
 
     return (
-        <div className="space-y-6">
-            <div className="flex justify-between items-center">
-                <h1 className="text-2xl font-bold">Gestion des Utilisateurs</h1>
-                <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                    <input
-                        type="text"
-                        placeholder="Rechercher..."
-                        className="pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
+        <div className="animate-in" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                    <h1 style={{ fontSize: 22, fontWeight: 700 }}>Utilisateurs</h1>
+                    <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                        {users.length} utilisateur{users.length !== 1 ? 's' : ''} enregistré{users.length !== 1 ? 's' : ''}
+                    </p>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn btn-outline btn-sm" onClick={fetchUsers}>
+                        <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+                    </button>
                 </div>
             </div>
 
-            <div className="bg-white rounded-lg shadow overflow-hidden">
-                <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                        <tr>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Utilisateur</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rôle</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Solde Portefeuille</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date d'inscription</th>
-                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                        {users?.map((user) => (
-                            <tr key={user.id} className="hover:bg-gray-50">
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                    <div className="flex items-center">
-                                        <div className="h-10 w-10 flex-shrink-0 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold">
-                                            {user.username?.substring(0, 2).toUpperCase()}
-                                        </div>
-                                        <div className="ml-4">
-                                            <div className="text-sm font-medium text-gray-900">{user.username}</div>
-                                            <div className="text-sm text-gray-500">{user.email}</div>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
-                                        ${user.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-green-100 text-green-800'}`}>
-                                        {user.role}
-                                    </span>
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                    <div className="flex items-center gap-1">
-                                        <Wallet className="h-4 w-4 text-gray-400" />
-                                        {Number(user.walletBalance).toFixed(2)}$
-                                    </div>
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                    {new Date(user.createdAt).toLocaleDateString()}
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                    <Link to={`/users/${user.id}`} className="text-blue-600 hover:text-blue-900">
-                                        Gérer
-                                    </Link>
-                                </td>
+            {/* Stats */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
+                {[
+                    { label: 'Total Users',  value: users.length, icon: Users, color: 'icon-wrap-blue' },
+                    { label: 'Admins',       value: users.filter(u => u.role === 'admin').length, icon: Activity, color: 'icon-wrap-green' },
+                    { label: 'Balance Cumulée', value: `$${users.reduce((a, u) => a + Number(u.balance || 0), 0).toFixed(2)}`, icon: DollarSign, color: 'icon-wrap-orange' },
+                ].map(({ label, value, icon: Icon, color }) => (
+                    <div key={label} className="stat-card" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                        <div className={`icon-wrap ${color}`} style={{ width: 40, height: 40, borderRadius: 10 }}>
+                            <Icon size={18} />
+                        </div>
+                        <div>
+                            <div className="stat-card-label">{label}</div>
+                            <div className="stat-card-value" style={{ fontSize: 20 }}>{value}</div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            <div className="card">
+                <div className="card-header" style={{ paddingBottom: 14 }}>
+                    <div className="card-title">
+                        <Users size={14} style={{ color: 'var(--primary)' }} />
+                        Liste des Utilisateurs
+                    </div>
+                    <div style={{ position: 'relative' }}>
+                        <Search size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                        <input className="form-control" placeholder="Rechercher..."
+                            style={{ paddingLeft: 30, width: 200, height: 32, fontSize: 12 }}
+                            value={search} onChange={e => setSearch(e.target.value)} />
+                    </div>
+                </div>
+                <div className="divider" />
+                {loading ? (
+                    <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
+                        <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 8px', display: 'block' }} />
+                        Chargement...
+                    </div>
+                ) : (
+                    <table className="data-table">
+                        <thead>
+                            <tr>
+                                <th>Utilisateur</th>
+                                <th>Email</th>
+                                <th>Rôle</th>
+                                <th>Balance</th>
+                                <th>Inscrit le</th>
+                                <th style={{ textAlign: 'right' }}>Actions</th>
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            {filtered.length === 0 ? (
+                                <tr><td colSpan={6}>
+                                    <div className="empty-state"><Users size={32} /><p>Aucun utilisateur trouvé</p></div>
+                                </td></tr>
+                            ) : filtered.map(u => (
+                                <tr key={u.id} onClick={() => navigate(`/users/${u.id}`)}>
+                                    <td>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                            <div style={{
+                                                width: 34, height: 34, borderRadius: '50%',
+                                                background: 'linear-gradient(135deg, var(--primary), #7C3AED)',
+                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                color: 'white', fontSize: 12, fontWeight: 700, flexShrink: 0
+                                            }}>
+                                                {getInitials(u)}
+                                            </div>
+                                            <div>
+                                                <div style={{ fontWeight: 600, fontSize: 13 }}>
+                                                    {u.firstName && u.lastName ? `${u.firstName} ${u.lastName}` : u.email.split('@')[0]}
+                                                </div>
+                                                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>ID: {u.id.slice(0, 8)}…</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{u.email}</td>
+                                    <td><span className={getRoleBadge(u.role)}>{u.role || 'user'}</span></td>
+                                    <td style={{ fontWeight: 600 }}>${Number(u.balance || 0).toFixed(2)}</td>
+                                    <td style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+                                        {u.createdAt ? new Date(u.createdAt).toLocaleDateString('fr-FR') : '—'}
+                                    </td>
+                                    <td>
+                                        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                            <button className="btn btn-ghost btn-icon">
+                                                <ChevronRight size={14} />
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                )}
             </div>
         </div>
     );
-};
-
-export default Users;
+}

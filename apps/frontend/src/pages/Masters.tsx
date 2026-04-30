@@ -1,63 +1,32 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
-import type { Master, CreateMasterDto } from '../api';
-import { Plus, Trash2, Server, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
-import { BROKERS } from '../brokers.config';
+import type { Master } from '../api';
+import {
+    Plus, Trash2, UserCog, MoreHorizontal, ChevronRight,
+    Activity, DollarSign, Users, Search, RefreshCw
+} from 'lucide-react';
 
 export default function Masters() {
     const navigate = useNavigate();
     const [masters, setMasters] = useState<Master[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [search, setSearch] = useState('');
     const [isCreating, setIsCreating] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [newMaster, setNewMaster] = useState<CreateMasterDto>({
-        name: '',
-        broker: 'binance',
-        credentials: {},
+    const [newMaster, setNewMaster] = useState({
+        name: '', broker: 'metatrader', credentials: {}, config: {}
     });
-    const [isTestingConnection, setIsTestingConnection] = useState(false);
-    const [connectionStatus, setConnectionStatus] = useState<'idle' | 'valid' | 'invalid' | 'error'>('idle');
-    const [connectionMessage, setConnectionMessage] = useState('');
 
-    useEffect(() => {
-        fetchMasters();
-    }, []);
+    useEffect(() => { fetchMasters(); }, []);
 
     const fetchMasters = async () => {
+        setLoading(true);
         try {
-            const response = await api.get<Master[]>('/masters');
-            setMasters(response.data);
-        } catch (error) {
-            console.error('Failed to fetch masters:', error);
-        }
-    };
-
-    const testConnection = async () => {
-        setIsTestingConnection(true);
-        setConnectionMessage('');
-        setConnectionStatus('idle');
-        try {
-            const response = await api.post('/brokers/metatrader/verify-connection', {
-                ...newMaster.credentials,
-                platform: newMaster.credentials.platform || 'mt5'
-            });
-            if (response.data.success) {
-                setConnectionStatus('valid');
-                const balanceInfo = response.data.balance !== undefined
-                    ? ` - Balance: ${response.data.balance}, Equity: ${response.data.equity}`
-                    : '';
-                setConnectionMessage(`Connection successful${balanceInfo}`);
-            } else {
-                setConnectionStatus('invalid');
-                setConnectionMessage(response.data.error || 'Connection failed');
-            }
-        } catch (error: any) {
-            console.error('Connection test failed:', error);
-            setConnectionStatus('error');
-            setConnectionMessage(error.response?.data?.error || error.response?.data?.message || error.message || 'Connection test failed');
-        } finally {
-            setIsTestingConnection(false);
-        }
+            const r = await api.get<Master[]>('/masters');
+            setMasters(r.data);
+        } catch { /* silent */ }
+        finally { setLoading(false); }
     };
 
     const handleCreate = async (e: React.FormEvent) => {
@@ -66,351 +35,209 @@ export default function Masters() {
         try {
             await api.post('/masters', newMaster);
             setIsCreating(false);
-            setNewMaster({ name: '', broker: 'binance', credentials: {} });
+            setNewMaster({ name: '', broker: 'metatrader', credentials: {}, config: {} });
             fetchMasters();
-        } catch (error: any) {
-            console.error('Failed to create master:', error);
-            const errorMessage = error.response?.data?.message || error.message || 'Failed to create master';
-            alert(`Error: ${Array.isArray(errorMessage) ? errorMessage.join(', ') : errorMessage}`);
-        } finally {
-            setIsSubmitting(false);
-        }
+        } catch (err: any) {
+            alert(err.response?.data?.message || 'Failed to create master');
+        } finally { setIsSubmitting(false); }
     };
 
-    const handleDelete = async (id: string) => {
-        if (!confirm('Are you sure?')) return;
+    const handleDelete = async (id: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!confirm('Supprimer ce master ?')) return;
         try {
             await api.delete(`/masters/${id}`);
             fetchMasters();
-        } catch (error) {
-            console.error('Failed to delete master:', error);
-        }
+        } catch { /* silent */ }
     };
 
+    const getStatusBadge = (status: string) => {
+        const map: Record<string, string> = {
+            ACTIVE: 'badge-active', PENDING: 'badge-pending',
+            PAUSED: 'badge-paused', STOPPED: 'badge-stopped',
+        };
+        return `badge ${map[status] || 'badge-pending'}`;
+    };
+
+    const filtered = masters.filter(m =>
+        m.name.toLowerCase().includes(search.toLowerCase()) ||
+        m.broker?.toLowerCase().includes(search.toLowerCase())
+    );
+
     return (
-        <div className="space-y-6">
-            <div className="flex justify-between items-center">
-                <h1 className="text-3xl font-bold text-gray-900">Masters</h1>
-                <button
-                    onClick={() => setIsCreating(!isCreating)}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                >
-                    <Plus size={20} />
-                    Add Master
-                </button>
+        <div className="animate-in" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                    <h1 style={{ fontSize: 22, fontWeight: 700 }}>Masters</h1>
+                    <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                        {masters.length} compte{masters.length !== 1 ? 's' : ''} master configuré{masters.length !== 1 ? 's' : ''}
+                    </p>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn btn-outline btn-sm" onClick={fetchMasters}>
+                        <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+                    </button>
+                    <button className="btn btn-primary" onClick={() => setIsCreating(!isCreating)}>
+                        <Plus size={15} />
+                        Nouveau Master
+                    </button>
+                </div>
             </div>
 
+            {/* Create form */}
             {isCreating && (
-                <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
-                    <h2 className="text-xl font-semibold mb-4">New Master</h2>
-                    <form onSubmit={handleCreate} className="space-y-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">Name</label>
-                            <input
-                                type="text"
-                                value={newMaster.name}
-                                onChange={(e) => setNewMaster({ ...newMaster, name: e.target.value })}
-                                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border"
-                                required
-                            />
+                <div className="card animate-in">
+                    <div className="card-header" style={{ paddingBottom: 16 }}>
+                        <div className="card-title">
+                            <UserCog size={15} style={{ color: 'var(--primary)' }} />
+                            Nouveau compte Master
                         </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">Broker</label>
-                            <select
-                                value={BROKERS.some(b => b.id === newMaster.broker) ? 'metatrader' : newMaster.broker}
-                                onChange={(e) => setNewMaster({ ...newMaster, broker: e.target.value, credentials: {} })}
-                                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border"
-                            >
-                                <option value="binance">Bin ance</option>
-                                <option value="metatrader">MetaTrader</option>
-                            </select>
-                        </div>
-
-                        {newMaster.broker === 'binance' && (
-                            <>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700">API Key</label>
-                                    <input
-                                        type="text"
-                                        value={newMaster.credentials.apiKey || ''}
-                                        onChange={(e) => setNewMaster({
-                                            ...newMaster,
-                                            credentials: { ...newMaster.credentials, apiKey: e.target.value }
-                                        })}
-                                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border"
-                                        required
-                                    />
+                        <button className="btn btn-ghost btn-sm" onClick={() => setIsCreating(false)}>
+                            Annuler
+                        </button>
+                    </div>
+                    <div className="divider" />
+                    <div className="card-body">
+                        <form onSubmit={handleCreate}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                                <div className="form-group">
+                                    <label className="form-label">Nom du compte</label>
+                                    <input className="form-control" placeholder="ex: FTMO Master 1"
+                                        value={newMaster.name}
+                                        onChange={e => setNewMaster({ ...newMaster, name: e.target.value })}
+                                        required />
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700">API Secret</label>
-                                    <input
-                                        type="password"
-                                        value={newMaster.credentials.apiSecret || ''}
-                                        onChange={(e) => setNewMaster({
-                                            ...newMaster,
-                                            credentials: { ...newMaster.credentials, apiSecret: e.target.value }
-                                        })}
-                                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border"
-                                        required
-                                    />
-                                </div>
-                            </>
-                        )}
-
-                        {(newMaster.broker === 'metatrader' || BROKERS.some(b => b.id === newMaster.broker)) && (
-                            <>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700">Broker List</label>
-                                    <select
-                                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border"
-                                        value={BROKERS.some(b => b.id === newMaster.broker) ? newMaster.broker : ''}
-                                        onChange={(e) => {
-                                            const brokerId = e.target.value;
-                                            const broker = BROKERS.find(b => b.id === brokerId);
-                                            if (broker) {
-                                                const defaultPlatform = broker.platforms[0];
-                                                setNewMaster(prev => ({
-                                                    ...prev,
-                                                    broker: brokerId,
-                                                    credentials: {
-                                                        ...prev.credentials,
-                                                        platform: defaultPlatform
-                                                    }
-                                                }));
-                                            }
-                                        }}
-                                    >
-                                        <option value="">Select a Broker</option>
-                                        {BROKERS.map(broker => (
-                                            <option key={broker.id} value={broker.id}>{broker.name}</option>
-                                        ))}
+                                <div className="form-group">
+                                    <label className="form-label">Broker</label>
+                                    <select className="form-control"
+                                        value={newMaster.broker}
+                                        onChange={e => setNewMaster({ ...newMaster, broker: e.target.value })}>
+                                        <option value="metatrader">MetaTrader</option>
+                                        <option value="binance">Binance</option>
                                     </select>
                                 </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700">Server</label>
-                                    <div className="space-y-2">
-                                        <select
-                                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border"
-                                            value={newMaster.credentials.server && BROKERS.find(b => b.id === newMaster.broker)?.servers.some(s => s.name === newMaster.credentials.server) ? newMaster.credentials.server : 'manual'}
-                                            onChange={(e) => {
-                                                const serverName = e.target.value;
-                                                if (serverName === 'manual') {
-                                                    setNewMaster(prev => ({
-                                                        ...prev,
-                                                        credentials: { ...prev.credentials, server: '' }
-                                                    }));
-                                                    return;
-                                                }
-
-                                                const broker = BROKERS.find(b => b.id === newMaster.broker);
-                                                const selectedServer = broker?.servers.find(s => s.name === serverName);
-
-                                                if (selectedServer) {
-                                                    const [host, port] = selectedServer.address.split(':');
-                                                    setNewMaster(prev => ({
-                                                        ...prev,
-                                                        credentials: {
-                                                            ...prev.credentials,
-                                                            server: serverName,
-                                                            host,
-                                                            port: parseInt(port)
-                                                        }
-                                                    }));
-                                                }
-                                            }}
-                                        >
-                                            <option value="">Select a Server</option>
-                                            {(() => {
-                                                const broker = BROKERS.find(b => b.id === newMaster.broker);
-                                                const servers = broker ? broker.servers : [];
-                                                return servers.map(server => (
-                                                    <option key={server.name} value={server.name}>
-                                                        {server.name} ({server.type})
-                                                    </option>
-                                                ));
-                                            })()}
-                                            <option value="manual">Enter Manually...</option>
-                                        </select>
-
-                                        {(!newMaster.credentials.server || !BROKERS.find(b => b.id === newMaster.broker)?.servers.some(s => s.name === newMaster.credentials.server)) && (
-                                            <input
-                                                type="text"
-                                                placeholder="Enter server name (e.g., MetaQuotes-Demo)"
-                                                value={newMaster.credentials.server || ''}
-                                                onChange={(e) => setNewMaster({
-                                                    ...newMaster,
-                                                    credentials: { ...newMaster.credentials, server: e.target.value }
-                                                })}
-                                                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border"
-                                            />
-                                        )}
-                                    </div>
-                                    <p className="text-xs text-gray-500 mt-1">Select a server or enter name manually</p>
+                                <div className="form-group">
+                                    <label className="form-label">Login MT5</label>
+                                    <input className="form-control" placeholder="ex: 123456"
+                                        onChange={e => setNewMaster({ ...newMaster, credentials: { ...newMaster.credentials, login: e.target.value } })} />
                                 </div>
-
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700">Bridge IP (Optional)</label>
-                                        <input
-                                            type="text"
-                                            placeholder="127.0.0.1"
-                                            value={newMaster.credentials.bridgeIp || ''}
-                                            onChange={(e) => setNewMaster({
-                                                ...newMaster,
-                                                credentials: { ...newMaster.credentials, bridgeIp: e.target.value }
-                                            })}
-                                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700">Bridge Port (Optional)</label>
-                                        <input
-                                            type="number"
-                                            placeholder="3000"
-                                            value={newMaster.credentials.bridgePort || ''}
-                                            onChange={(e) => setNewMaster({
-                                                ...newMaster,
-                                                credentials: { ...newMaster.credentials, bridgePort: parseInt(e.target.value) || '' }
-                                            })}
-                                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border"
-                                        />
-                                    </div>
+                                <div className="form-group">
+                                    <label className="form-label">Password</label>
+                                    <input className="form-control" type="password" placeholder="••••••••"
+                                        onChange={e => setNewMaster({ ...newMaster, credentials: { ...newMaster.credentials, password: e.target.value } })} />
                                 </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700">Login</label>
-                                    <input
-                                        type="text"
-                                        value={newMaster.credentials.login || ''}
-                                        onChange={(e) => setNewMaster({
-                                            ...newMaster,
-                                            credentials: { ...newMaster.credentials, login: e.target.value }
-                                        })}
-                                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border"
-                                        required
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700">Password</label>
-                                    <input
-                                        type="password"
-                                        value={newMaster.credentials.password || ''}
-                                        onChange={(e) => setNewMaster({
-                                            ...newMaster,
-                                            credentials: { ...newMaster.credentials, password: e.target.value }
-                                        })}
-                                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border"
-                                        required
-                                    />
-                                </div>
-
-                                {newMaster.credentials.platform === 'mt4' && (
-                                    <>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700">Host</label>
-                                            <input
-                                                type="text"
-                                                value={newMaster.credentials.host || ''}
-                                                onChange={(e) => setNewMaster({
-                                                    ...newMaster,
-                                                    credentials: { ...newMaster.credentials, host: e.target.value }
-                                                })}
-                                                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700">Port</label>
-                                            <input
-                                                type="number"
-                                                value={newMaster.credentials.port || ''}
-                                                onChange={(e) => setNewMaster({
-                                                    ...newMaster,
-                                                    credentials: { ...newMaster.credentials, port: parseInt(e.target.value) }
-                                                })}
-                                                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border"
-                                            />
-                                        </div>
-                                    </>
-                                )}
-
-                                {/* Connection Test */}
-                                <div className="flex items-center gap-4 mt-4">
-                                    <button
-                                        type="button"
-                                        onClick={testConnection}
-                                        disabled={isTestingConnection || !newMaster.credentials.login || !newMaster.credentials.password}
-                                        className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50 flex items-center gap-2"
-                                    >
-                                        {isTestingConnection && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-                                        Test Connection
-                                    </button>
-                                    {connectionStatus !== 'idle' && (
-                                        <div className={`flex items-center gap-2 text-sm ${connectionStatus === 'valid' ? 'text-green-600' :
-                                            connectionStatus === 'error' ? 'text-red-600' : 'text-amber-600'
-                                            }`}>
-                                            {connectionStatus === 'valid' && <CheckCircle size={16} />}
-                                            {connectionStatus === 'invalid' && <XCircle size={16} />}
-                                            {connectionStatus === 'error' && <AlertTriangle size={16} />}
-                                            <span>{connectionMessage}</span>
-                                        </div>
-                                    )}
-                                </div>
-                            </>
-                        )}
-
-                        <div className="flex gap-2">
-                            <button
-                                type="button"
-                                onClick={() => setIsCreating(false)}
-                                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="submit"
-                                disabled={isSubmitting}
-                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                            >
-                                {isSubmitting ? 'Creating...' : 'Create'}
-                            </button>
-                        </div>
-                    </form>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 8 }}>
+                                <button type="button" className="btn btn-outline" onClick={() => setIsCreating(false)}>
+                                    Annuler
+                                </button>
+                                <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
+                                    {isSubmitting ? 'Création...' : 'Créer le Master'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             )}
 
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {masters.map((master) => (
-                    <div
-                        key={master.id}
-                        className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow cursor-pointer"
-                        onClick={() => navigate(`/masters/${master.id}`)}
-                    >
-                        <div className="flex justify-between items-start mb-4">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-blue-100 rounded-lg">
-                                    <Server className="text-blue-600" size={24} />
-                                </div>
-                                <div>
-                                    <h3 className="font-semibold text-lg">{master.name}</h3>
-                                    <p className="text-sm text-gray-500 capitalize">{master.broker}</p>
-                                </div>
-                            </div>
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDelete(master.id);
-                                }}
-                                className="text-gray-400 hover:text-red-600"
-                            >
-                                <Trash2 size={20} />
-                            </button>
+            {/* Stats row */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
+                {[
+                    { label: 'Total Masters',   value: masters.length, icon: UserCog,   color: 'icon-wrap-blue' },
+                    { label: 'Masters Actifs',  value: masters.filter(m => (m as any).status === 'ACTIVE').length, icon: Activity, color: 'icon-wrap-green' },
+                    { label: 'Balance Totale',  value: `$${masters.reduce((a, m) => a + Number((m as any).balance || 0), 0).toFixed(2)}`, icon: DollarSign, color: 'icon-wrap-orange' },
+                ].map(({ label, value, icon: Icon, color }) => (
+                    <div key={label} className="stat-card" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                        <div className={`icon-wrap ${color}`} style={{ width: 40, height: 40, borderRadius: 10 }}>
+                            <Icon size={18} />
                         </div>
-                        <div className="text-sm text-gray-500">
-                            ID: {master.id.slice(0, 8)}...
+                        <div>
+                            <div className="stat-card-label">{label}</div>
+                            <div className="stat-card-value" style={{ fontSize: 20 }}>{value}</div>
                         </div>
                     </div>
                 ))}
+            </div>
+
+            {/* Table card */}
+            <div className="card">
+                <div className="card-header" style={{ paddingBottom: 14 }}>
+                    <div className="card-title">
+                        <UserCog size={14} style={{ color: 'var(--primary)' }} />
+                        Liste des Masters
+                    </div>
+                    <div style={{ position: 'relative' }}>
+                        <Search size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                        <input className="form-control" placeholder="Rechercher..."
+                            style={{ paddingLeft: 30, width: 200, height: 32, fontSize: 12 }}
+                            value={search} onChange={e => setSearch(e.target.value)} />
+                    </div>
+                </div>
+                <div className="divider" />
+                {loading ? (
+                    <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
+                        <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 8px', display: 'block' }} />
+                        Chargement...
+                    </div>
+                ) : (
+                    <table className="data-table">
+                        <thead>
+                            <tr>
+                                <th>Nom</th>
+                                <th>Broker</th>
+                                <th>Platform</th>
+                                <th>Balance</th>
+                                <th>Equity</th>
+                                <th>Status</th>
+                                <th style={{ textAlign: 'right' }}>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {filtered.length === 0 ? (
+                                <tr>
+                                    <td colSpan={7}>
+                                        <div className="empty-state">
+                                            <UserCog size={32} />
+                                            <p>Aucun master trouvé</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ) : filtered.map(m => (
+                                <tr key={m.id} onClick={() => navigate(`/masters/${m.id}`)}>
+                                    <td>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                            <div className="icon-wrap icon-wrap-blue" style={{ width: 32, height: 32, borderRadius: 8 }}>
+                                                <UserCog size={14} />
+                                            </div>
+                                            <div>
+                                                <div style={{ fontWeight: 600, fontSize: 13 }}>{m.name}</div>
+                                                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>ID: {m.id.slice(0, 8)}…</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td style={{ color: 'var(--text-secondary)', textTransform: 'capitalize' }}>{m.broker}</td>
+                                    <td style={{ color: 'var(--text-secondary)' }}>{(m as any).credentials?.platform?.toUpperCase() || 'MT5'}</td>
+                                    <td style={{ fontWeight: 600 }}>${Number((m as any).balance || 0).toFixed(2)}</td>
+                                    <td style={{ fontWeight: 600 }}>${Number((m as any).equity || 0).toFixed(2)}</td>
+                                    <td><span className={getStatusBadge((m as any).status)}>{(m as any).status || 'PENDING'}</span></td>
+                                    <td>
+                                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 4 }}>
+                                            <button className="btn btn-ghost btn-icon" onClick={() => navigate(`/masters/${m.id}`)}>
+                                                <ChevronRight size={14} />
+                                            </button>
+                                            <button className="btn btn-ghost btn-icon" style={{ color: 'var(--danger)' }}
+                                                onClick={e => handleDelete(m.id, e)}>
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                )}
             </div>
         </div>
     );

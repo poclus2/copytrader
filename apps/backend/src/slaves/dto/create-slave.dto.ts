@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsObject, IsUUID, IsOptional, IsNumber } from 'class-validator';
+import { IsString, IsNotEmpty, IsObject, IsUUID, IsOptional, IsNumber, IsBoolean } from 'class-validator';
 
 export class CreateSlaveDto {
     @IsString()
@@ -33,4 +33,8 @@ export class CreateSlaveDto {
     @IsObject()
     @IsOptional()
     config?: any;
+
+    @IsBoolean()
+    @IsOptional()
+    isPropFirm?: boolean; // Whether this account is a Prop Firm account (enables shield)
 }

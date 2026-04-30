@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import * as Docker from 'dockerode';
+import Docker = require('dockerode');
 import * as path from 'path';
 import * as fs from 'fs';
 import { promises as fsPromises } from 'fs';

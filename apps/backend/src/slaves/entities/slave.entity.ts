@@ -59,6 +59,9 @@ export class Slave {
     @Column({ default: false })
     isFundingLocked: boolean;
 
+    @Column({ default: false })
+    isPropFirm: boolean;
+
     @Column({
         type: 'enum',
         enum: ['PENDING', 'ACTIVE', 'PAUSED', 'STOPPED'],
