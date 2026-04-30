@@ -17,6 +17,7 @@ import { WalletModule } from './wallet/wallet.module';
 import { AffiliationModule } from './affiliation/affiliation.module';
 import { KycModule } from './kyc/kyc.module';
 import { DockerModule } from './docker/docker.module';
+import { PropFirmShieldModule } from './prop-firm-shield/prop-firm-shield.module';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { DockerModule } from './docker/docker.module';
     AffiliationModule,
     KycModule,
     DockerModule,
+    PropFirmShieldModule,
   ],
   controllers: [AppController],
   providers: [AppService],

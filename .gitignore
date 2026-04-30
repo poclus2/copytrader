@@ -78,3 +78,8 @@ postgres-data/
 # ========================
 *.tsbuildinfo
 .eslintcache
+
+# ========================
+# Embedded git repos (to avoid submodule conflicts)
+# ========================
+strategies/GoldTraderEA_Source/

@@ -4,6 +4,7 @@ import { MockAdapter } from '../adapters/mock.adapter';
 import { MastersService } from '../masters/masters.service';
 import { MT5BridgeService } from '../metatrader-connection/mt5-bridge.service';
 import { TradesService } from '../trades/trades.service';
+import { PropFirmShieldService } from '../prop-firm-shield/prop-firm-shield.service';
 
 @Injectable()
 export class CopyEngineService implements OnModuleInit, OnModuleDestroy {
@@ -18,6 +19,7 @@ export class CopyEngineService implements OnModuleInit, OnModuleDestroy {
         private mastersService: MastersService,
         private mt5BridgeService: MT5BridgeService,
         private tradesService: TradesService,
+        private propFirmShieldService: PropFirmShieldService,
     ) { }
 
     onModuleInit() {
@@ -213,6 +215,66 @@ export class CopyEngineService implements OnModuleInit, OnModuleDestroy {
                 continue;
             }
 
+            // ── PropFirmShield Interception ───────────────────────────────────
+            let finalQuantity = quantity;
+            let shieldComment: string | undefined;
+            let shieldMagicNumber: number | undefined;
+
+            const shieldConfig = await this.propFirmShieldService.getConfig(slave.id);
+            if (shieldConfig?.isEnabled) {
+                this.logger.log(`[Shield] Intercepting trade for slave ${slave.id}`);
+
+                // Equity guard uses slave.equity as current equity.
+                // initialDailyEquity and totalStartEquity are stored in shieldConfig
+                // or fall back to current equity if not yet initialised (first trade of the day).
+                const initialDailyEquity = (slave as any).initialDailyEquity || slave.equity || 0;
+                const totalStartEquity = (slave as any).totalStartEquity || slave.equity || 0;
+
+                const payload = await this.propFirmShieldService.applyShield(
+                    shieldConfig,
+                    quantity,
+                    Number(slave.equity) || 0,
+                    Number(initialDailyEquity),
+                    Number(totalStartEquity),
+                    slave.id,
+                    trade.masterTradeId,
+                    trade.symbol,
+                    trade.side,
+                    'OPEN',
+                );
+
+                if (payload.blockedByEquityGuard) {
+                    this.logger.warn(
+                        `[Shield] Equity guard BLOCKED trade for slave ${slave.id}: ${payload.blockReason}`
+                    );
+                    // Pause the slave account so no further trades are copied
+                    await this.slavesService.update(slave.id, { status: 'PAUSED' } as any);
+                    // Persist the blocked trade as FAILED with the guard reason
+                    await this.tradesService.create({
+                        slaveId: slave.id,
+                        sourceTradeId: trade.masterTradeId,
+                        symbol: trade.symbol,
+                        type: trade.side,
+                        volume: quantity,
+                        openPrice: trade.price,
+                        status: 'FAILED',
+                        errorMessage: `[EquityGuard] ${payload.blockReason}`,
+                        openTime: new Date(),
+                    });
+                    continue; // Skip this slave entirely
+                }
+
+                finalQuantity = payload.volume;
+                shieldComment = payload.comment;
+                shieldMagicNumber = payload.magicNumber;
+
+                this.logger.log(
+                    `[Shield] slave ${slave.id}: volume ${quantity} → ${finalQuantity}, ` +
+                    `jitter ${payload.jitterMs}ms, comment "${shieldComment}"`
+                );
+            }
+            // ─────────────────────────────────────────────────────────────────
+
             // 3. Place order and save to database
             try {
                 // Check if it's a MetaTrader connection (either explicitly 'metatrader' or has bridge credentials)
@@ -230,7 +292,7 @@ export class CopyEngineService implements OnModuleInit, OnModuleDestroy {
                         {
                             symbol: trade.symbol,
                             type: trade.side,
-                            volume: quantity,
+                            volume: finalQuantity,
                         }
                     );
 
@@ -242,7 +304,7 @@ export class CopyEngineService implements OnModuleInit, OnModuleDestroy {
                             sourceTradeId: trade.masterTradeId,
                             symbol: trade.symbol,
                             type: trade.side,
-                            volume: quantity,
+                            volume: finalQuantity,
                             openPrice: trade.price,
                             status: 'FAILED',
                             errorMessage: result.error || 'Unknown error',
@@ -259,7 +321,7 @@ export class CopyEngineService implements OnModuleInit, OnModuleDestroy {
                         ticket: result.ticket ? String(result.ticket) : undefined, // Store MT5 ticket
                         symbol: trade.symbol,
                         type: trade.side,
-                        volume: quantity,
+                        volume: finalQuantity,
                         openPrice: result.price || trade.price, // Use actual execution price if available
                         status: 'OPEN',
                         openTime: new Date(),
@@ -272,7 +334,7 @@ export class CopyEngineService implements OnModuleInit, OnModuleDestroy {
                         symbol: trade.symbol,
                         side: trade.side,
                         type: 'MARKET',
-                        quantity: quantity,
+                        quantity: finalQuantity,
                     });
 
                     // Save slave trade to database
@@ -281,7 +343,7 @@ export class CopyEngineService implements OnModuleInit, OnModuleDestroy {
                         sourceTradeId: trade.masterTradeId,
                         symbol: trade.symbol,
                         type: trade.side,
-                        volume: quantity,
+                        volume: finalQuantity,
                         openPrice: trade.price,
                         status: 'OPEN',
                         openTime: new Date(),
@@ -297,7 +359,7 @@ export class CopyEngineService implements OnModuleInit, OnModuleDestroy {
                     sourceTradeId: trade.masterTradeId,
                     symbol: trade.symbol,
                     type: trade.side,
-                    volume: quantity,
+                    volume: finalQuantity,
                     openPrice: trade.price,
                     status: 'FAILED',
                     errorMessage: error.message || 'Internal error',

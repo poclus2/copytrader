@@ -9,6 +9,7 @@ import Slaves from './pages/Slaves';
 import SlaveDetails from './pages/SlaveDetails';
 import Users from './pages/Users';
 import UserDetail from './pages/UserDetail';
+import PropFirmProtection from './pages/PropFirmProtection';
 
 function App() {
   return (
@@ -24,6 +25,7 @@ function App() {
           <Route path="slaves/:id" element={<SlaveDetails />} />
           <Route path="users" element={<Users />} />
           <Route path="users/:id" element={<UserDetail />} />
+          <Route path="prop-firm-protection" element={<PropFirmProtection />} />
           <Route path="settings" element={<div>Settings Page</div>} />
         </Route>
       </Routes>
