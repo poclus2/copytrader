@@ -4,7 +4,7 @@ import { api, type Master } from '../api';
 import {
     ArrowLeft, Save, Trash2, CheckCircle, XCircle, AlertTriangle,
     RefreshCw, UserCog, DollarSign, TrendingUp, TrendingDown,
-    Server, Settings, Activity, ChevronLeft, ChevronRight
+    Server, Settings, Activity, ChevronLeft, ChevronRight, Monitor
 } from 'lucide-react';
 import { BROKERS } from '../brokers.config';
 import ErrorBoundary from '../components/ErrorBoundary';
@@ -208,6 +208,7 @@ export default function MasterDetails() {
                     {[
                         { key: 'profile',    label: 'Profil Public',         icon: UserCog },
                         { key: 'connection', label: 'Connexion MetaTrader',  icon: Server },
+                        { key: 'vnc',        label: 'Terminal VNC',          icon: Monitor },
                     ].map(({ key, label, icon: Icon }) => (
                         <button key={key}
                             onClick={() => setActiveTab(key as any)}
@@ -355,6 +356,24 @@ export default function MasterDetails() {
                                         </span>
                                     )}
                                 </div>
+                            </div>
+                        )}
+
+                        {/* ── Tab: VNC ───────────────────────────────── */}
+                        {activeTab === 'vnc' && (
+                            <div style={{ height: 600, width: '100%', backgroundColor: '#000', borderRadius: 8, overflow: 'hidden' }}>
+                                {master.credentials?.vncPort ? (
+                                    <iframe 
+                                        src={`http://localhost:${master.credentials.vncPort}`} 
+                                        style={{ width: '100%', height: '100%', border: 'none' }}
+                                        title="VNC Terminal"
+                                    />
+                                ) : (
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>
+                                        <AlertTriangle size={24} style={{ marginRight: 8 }} />
+                                        Le port VNC n'est pas configuré pour ce Master.
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>

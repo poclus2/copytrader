@@ -16,12 +16,21 @@ export class MastersService {
 
   async create(createMasterDto: CreateMasterDto) {
     const master = this.mastersRepository.create(createMasterDto);
-    const savedMaster = await this.mastersRepository.save(master);
+    let savedMaster = await this.mastersRepository.save(master);
     
     // Si c'est un compte MetaTrader, lancer la création dynamique Docker
     if (savedMaster.broker === 'metatrader' && savedMaster.credentials) {
       try {
-          await this.dockerService.createMT5Container(savedMaster.id, savedMaster.credentials, true);
+          const { containerName, vncPort, bridgePort } = await this.dockerService.createMT5Container(savedMaster.id, savedMaster.credentials, true);
+          
+          // Sauvegarde des infos de connexion
+          savedMaster.credentials = {
+              ...savedMaster.credentials,
+              bridgeIp: '127.0.0.1', // En dev local
+              bridgePort,
+              vncPort
+          };
+          savedMaster = await this.mastersRepository.save(savedMaster);
       } catch(e) {
           console.error('Failed to create MT5 container for master', e);
       }

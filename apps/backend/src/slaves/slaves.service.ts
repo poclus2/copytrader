@@ -46,12 +46,20 @@ export class SlavesService {
       master: { id: masterId },
       user: { id: userId }
     });
-    const savedSlave = await this.slavesRepository.save(slave);
+    let savedSlave = await this.slavesRepository.save(slave);
 
     // Si c'est un compte MetaTrader, lancer la création dynamique Docker
     if (savedSlave.broker === 'metatrader' && savedSlave.credentials) {
       try {
-        await this.dockerService.createMT5Container(savedSlave.id, savedSlave.credentials, false);
+        const { containerName, vncPort, bridgePort } = await this.dockerService.createMT5Container(savedSlave.id, savedSlave.credentials, false);
+        
+        savedSlave.credentials = {
+            ...savedSlave.credentials,
+            bridgeIp: '127.0.0.1', // En dev local
+            bridgePort,
+            vncPort
+        };
+        savedSlave = await this.slavesRepository.save(savedSlave);
       } catch(e) {
         console.error('Failed to create MT5 container for slave', e);
       }
