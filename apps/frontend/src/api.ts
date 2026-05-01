@@ -35,7 +35,10 @@ export interface Slave {
     credentials: any;
     isActive: boolean;
     config: any;
-    master?: Master;
+    masters?: Master[];    // Multi-Master : liste des masters
+    master?: Master;       // Rétrocompatibilité
+    isPropFirm?: boolean;
+    status?: string;
     createdAt: string;
     updatedAt: string;
 }
@@ -61,6 +64,11 @@ export interface CreateSlaveDto {
     name: string;
     broker: string;
     credentials: any;
-    masterId: string;
+    masterIds: string[];   // Tableau de masters (Multi-Master)
     config?: any;
+    isPropFirm?: boolean;
+    userId?: string;
+    type?: 'EXTERNAL' | 'VIRTUAL';
+    initialBalance?: number;
 }
+

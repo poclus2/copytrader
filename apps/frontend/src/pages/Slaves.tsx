@@ -21,7 +21,7 @@ export default function Slaves() {
     const [connectionStatus, setConnectionStatus] = useState<'idle' | 'valid' | 'invalid' | 'error'>('idle');
     const [connectionMessage, setConnectionMessage] = useState('');
     const [newSlave, setNewSlave] = useState<CreateSlaveDto>({
-        name: '', broker: 'metatrader', credentials: {}, masterId: '', isPropFirm: false,
+        name: '', broker: 'metatrader', credentials: {}, masterIds: [], isPropFirm: false,
         config: { mode: 'FIXED_RATIO', ratio: 1.0 },
     });
 
@@ -37,7 +37,8 @@ export default function Slaves() {
         try {
             const r = await api.get<Master[]>('/masters');
             setMasters(r.data);
-            if (r.data.length > 0) setNewSlave(p => ({ ...p, masterId: r.data[0].id }));
+            // Présélectionner le premier master par défaut
+            if (r.data.length > 0) setNewSlave(p => ({ ...p, masterIds: [r.data[0].id] }));
         } catch { /* silent */ }
     };
 
@@ -63,11 +64,15 @@ export default function Slaves() {
 
     const handleCreate = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!newSlave.masterIds || newSlave.masterIds.length === 0) {
+            alert('Veuillez sélectionner au moins un Master.');
+            return;
+        }
         setIsSubmitting(true);
         try {
             await api.post('/slaves', newSlave);
             setIsCreating(false);
-            setNewSlave({ name: '', broker: 'metatrader', credentials: {}, masterId: masters[0]?.id || '', isPropFirm: false, config: { mode: 'FIXED_RATIO', ratio: 1.0 } });
+            setNewSlave({ name: '', broker: 'metatrader', credentials: {}, masterIds: masters.length > 0 ? [masters[0].id] : [], isPropFirm: false, config: { mode: 'FIXED_RATIO', ratio: 1.0 } });
             setConnectionStatus('idle');
             fetchSlaves();
         } catch (err: any) {
@@ -161,12 +166,36 @@ export default function Slaves() {
                                         onChange={e => setNewSlave({ ...newSlave, name: e.target.value })}
                                         required />
                                 </div>
-                                <div className="form-group">
-                                    <label className="form-label">Master</label>
-                                    <select className="form-control" value={newSlave.masterId}
-                                        onChange={e => setNewSlave({ ...newSlave, masterId: e.target.value })} required>
-                                        {masters.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                                    <label className="form-label">
+                                        Masters à copier
+                                        <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 6 }}>Ctrl+clic pour sélection multiple</span>
+                                    </label>
+                                    <select className="form-control" multiple
+                                        style={{ height: Math.min(masters.length * 36 + 8, 160) }}
+                                        value={newSlave.masterIds || []}
+                                        onChange={e => {
+                                            const selected = Array.from(e.target.selectedOptions).map(o => o.value);
+                                            setNewSlave({ ...newSlave, masterIds: selected });
+                                        }} required>
+                                        {masters.map(m => (
+                                            <option key={m.id} value={m.id}>
+                                                {m.name} — {m.broker}
+                                            </option>
+                                        ))}
                                     </select>
+                                    {(newSlave.masterIds?.length ?? 0) > 0 && (
+                                        <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                            {(newSlave.masterIds || []).map(id => {
+                                                const m = masters.find(x => x.id === id);
+                                                return m ? (
+                                                    <span key={id} className="badge badge-active" style={{ fontSize: 10 }}>
+                                                        {m.name}
+                                                    </span>
+                                                ) : null;
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Broker</label>

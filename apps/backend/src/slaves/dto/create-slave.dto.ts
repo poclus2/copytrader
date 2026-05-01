@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsObject, IsUUID, IsOptional, IsNumber, IsBoolean } from 'class-validator';
+import { IsString, IsNotEmpty, IsObject, IsUUID, IsOptional, IsNumber, IsBoolean, IsArray } from 'class-validator';
 
 export class CreateSlaveDto {
     @IsString()
@@ -15,20 +15,23 @@ export class CreateSlaveDto {
     broker: string;
 
     @IsObject()
-    @IsOptional() // Credentials optional for Virtual or initial setup
+    @IsOptional()
     credentials: any;
 
-    @IsUUID()
+    // ── Multi-Master : tableau d'UUIDs ────────────────────────────────
+    @IsArray()
+    @IsUUID('4', { each: true })
     @IsNotEmpty()
-    masterId: string;
+    masterIds: string[]; // Remplace l'ancien masterId singulier
+    // ─────────────────────────────────────────────────────────────────
 
     @IsUUID()
     @IsNotEmpty()
-    userId: string; // The owner of this slave account
+    userId: string;
 
     @IsNumber()
     @IsOptional()
-    initialBalance?: number; // Amount to allocate for VIRTUAL mode
+    initialBalance?: number;
 
     @IsObject()
     @IsOptional()
@@ -36,5 +39,5 @@ export class CreateSlaveDto {
 
     @IsBoolean()
     @IsOptional()
-    isPropFirm?: boolean; // Whether this account is a Prop Firm account (enables shield)
+    isPropFirm?: boolean;
 }

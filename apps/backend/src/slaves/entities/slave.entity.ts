@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToMany, JoinTable, OneToMany } from 'typeorm';
 import { Master } from '../../masters/entities/master.entity';
 import { Trade } from '../../trades/entities/trade.entity';
 import { User } from '../../users/entities/user.entity';
@@ -23,12 +23,17 @@ export class Slave {
     @Column('jsonb', { nullable: true })
     config: any;
 
-    @ManyToOne(() => Master, (master) => master.slaves, { eager: true, onDelete: 'CASCADE' })
-    @JoinColumn({ name: 'masterId' })
-    master: Master;
-
-    @Column()
-    masterId: string;
+    // ── Multi-Master Relationship ─────────────────────────────────────
+    // Un slave peut copier plusieurs Masters simultanément.
+    // La table de jonction est 'slave_masters'.
+    @ManyToMany(() => Master, (master) => master.slaves, { eager: true, onDelete: 'CASCADE' })
+    @JoinTable({
+        name: 'slave_masters',
+        joinColumn: { name: 'slaveId', referencedColumnName: 'id' },
+        inverseJoinColumn: { name: 'masterId', referencedColumnName: 'id' }
+    })
+    masters: Master[];
+    // ─────────────────────────────────────────────────────────────────
 
     @Column({
         type: 'enum',
@@ -37,24 +42,24 @@ export class Slave {
     })
     type: 'EXTERNAL' | 'VIRTUAL';
 
-    @ManyToOne(() => User, (user) => user.slaves, { nullable: true })
-    @JoinColumn({ name: 'userId' })
-    user: User;
-
-    @Column({ nullable: true })
-    userId: string;
+    @ManyToMany(() => Master)
+    @JoinTable()
+    mastersList: Master[];
 
     @OneToMany(() => Trade, (trade) => trade.slave)
     trades: Trade[];
 
-    @Column({ type: 'decimal', precision: 20, scale: 8, default: 0 })
-    balance: number; // For EXTERNAL mode sync
+    @Column({ nullable: true })
+    userId: string;
 
     @Column({ type: 'decimal', precision: 20, scale: 8, default: 0 })
-    equity: number; // For EXTERNAL mode sync
+    balance: number;
 
     @Column({ type: 'decimal', precision: 20, scale: 8, default: 0 })
-    virtualBalance: number; // For VIRTUAL mode internal ledger
+    equity: number;
+
+    @Column({ type: 'decimal', precision: 20, scale: 8, default: 0 })
+    virtualBalance: number;
 
     @Column({ default: false })
     isFundingLocked: boolean;

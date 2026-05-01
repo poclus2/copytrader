@@ -7,6 +7,7 @@ import { UpdateSlaveDto } from './dto/update-slave.dto';
 import { UsersService } from '../users/users.service';
 import { WalletService } from '../wallet/wallet.service';
 import { DockerService } from '../docker/docker.service';
+import { MastersService } from '../masters/masters.service';
 
 @Injectable()
 export class SlavesService {
@@ -16,25 +17,30 @@ export class SlavesService {
     private usersService: UsersService,
     private walletService: WalletService,
     private dockerService: DockerService,
+    private mastersService: MastersService,
   ) { }
 
   async create(createSlaveDto: CreateSlaveDto) {
-    const { masterId, userId, type, initialBalance, ...rest } = createSlaveDto;
+    const { masterIds, userId, type, initialBalance, ...rest } = createSlaveDto;
 
     let virtualBalance = 0;
     let isFundingLocked = false;
-    // Default status: Virtual starts ACTIVE, External starts PENDING (awaiting admin validation)
     const initialStatus = type === 'VIRTUAL' ? 'ACTIVE' : 'PENDING';
 
     if (type === 'VIRTUAL') {
       if (!initialBalance || initialBalance <= 0) {
         throw new Error('Initial balance is required for virtual accounts');
       }
-      // Deduct from User Wallet
       await this.usersService.deductBalance(userId, initialBalance);
       virtualBalance = initialBalance;
       isFundingLocked = true;
     }
+
+    // Résoudre les objets Master depuis les IDs
+    const masters = await Promise.all(
+      masterIds.map(id => this.mastersService.findOne(id))
+    );
+    const validMasters = masters.filter(Boolean);
 
     const slave = this.slavesRepository.create({
       ...rest,
@@ -43,7 +49,7 @@ export class SlavesService {
       virtualBalance,
       isFundingLocked,
       status: initialStatus,
-      master: { id: masterId },
+      masters: validMasters,   // ← relation ManyToMany
       user: { id: userId }
     });
     let savedSlave = await this.slavesRepository.save(slave);
@@ -55,7 +61,7 @@ export class SlavesService {
         
         savedSlave.credentials = {
             ...savedSlave.credentials,
-            bridgeIp: '127.0.0.1', // En dev local
+            bridgeIp: '127.0.0.1',
             bridgePort,
             vncPort
         };
@@ -71,7 +77,7 @@ export class SlavesService {
   async findAll(userId?: string) {
     console.log('SlavesService.findAll userId:', userId);
     const query = this.slavesRepository.createQueryBuilder('slave')
-      .leftJoinAndSelect('slave.master', 'master')
+      .leftJoinAndSelect('slave.masters', 'masters')
       .loadRelationCountAndMap('slave.tradeCount', 'slave.trades');
 
     if (userId) {
@@ -88,11 +94,13 @@ export class SlavesService {
     }
   }
 
+  // ── Multi-Master : trouve tous les slaves qui ont ce master dans leur liste
   findByMasterId(masterId: string) {
-    return this.slavesRepository.find({
-      where: { master: { id: masterId } },
-      relations: ['master'],
-    });
+    return this.slavesRepository
+      .createQueryBuilder('slave')
+      .innerJoin('slave.masters', 'master', 'master.id = :masterId', { masterId })
+      .leftJoinAndSelect('slave.masters', 'allMasters')
+      .getMany();
   }
 
   findOne(id: string) {

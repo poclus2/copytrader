@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToMany, OneToMany } from 'typeorm';
 import { Slave } from '../../slaves/entities/slave.entity';
 import { Trade } from '../../trades/entities/trade.entity';
 
@@ -48,7 +48,7 @@ export class Master {
     @Column({ default: true })
     isActive: boolean;
 
-    @OneToMany(() => Slave, (slave) => slave.master)
+    @ManyToMany(() => Slave, (slave) => slave.masters)
     slaves: Slave[];
 
     @OneToMany(() => Trade, (trade) => trade.master)

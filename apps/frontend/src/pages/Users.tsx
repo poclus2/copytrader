@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
-import { Users, Search, RefreshCw, ChevronRight, DollarSign, Activity, Plus } from 'lucide-react';
+import { Users as UsersIcon, Search, RefreshCw, ChevronRight, DollarSign, Activity, Plus } from 'lucide-react';
 
 interface User {
     id: string;
@@ -62,7 +62,7 @@ export default function Users() {
             {/* Stats */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
                 {[
-                    { label: 'Total Users',  value: users.length, icon: Users, color: 'icon-wrap-blue' },
+                    { label: 'Total Users',  value: users.length, icon: UsersIcon, color: 'icon-wrap-blue' },
                     { label: 'Admins',       value: users.filter(u => u.role === 'admin').length, icon: Activity, color: 'icon-wrap-green' },
                     { label: 'Balance Cumulée', value: `$${users.reduce((a, u) => a + Number(u.balance || 0), 0).toFixed(2)}`, icon: DollarSign, color: 'icon-wrap-orange' },
                 ].map(({ label, value, icon: Icon, color }) => (
@@ -81,7 +81,7 @@ export default function Users() {
             <div className="card">
                 <div className="card-header" style={{ paddingBottom: 14 }}>
                     <div className="card-title">
-                        <Users size={14} style={{ color: 'var(--primary)' }} />
+                        <UsersIcon size={14} style={{ color: 'var(--primary)' }} />
                         Liste des Utilisateurs
                     </div>
                     <div style={{ position: 'relative' }}>
@@ -112,7 +112,7 @@ export default function Users() {
                         <tbody>
                             {filtered.length === 0 ? (
                                 <tr><td colSpan={6}>
-                                    <div className="empty-state"><Users size={32} /><p>Aucun utilisateur trouvé</p></div>
+                                    <div className="empty-state"><UsersIcon size={32} /><p>Aucun utilisateur trouvé</p></div>
                                 </td></tr>
                             ) : filtered.map(u => (
                                 <tr key={u.id} onClick={() => navigate(`/users/${u.id}`)}>
