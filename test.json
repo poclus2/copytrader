@@ -1,0 +1,8 @@
+{
+  "name": "icmarket",
+  "broker": "metatrader",
+  "credentials": {
+    "login": "52863718",
+    "password": "password"
+  }
+}

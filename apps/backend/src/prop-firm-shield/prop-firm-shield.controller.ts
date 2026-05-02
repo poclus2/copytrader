@@ -1,15 +1,51 @@
 import {
-    Controller, Get, Post, Patch, Body, Param,
+    Controller, Get, Post, Patch, Body, Param, Delete,
     UseGuards, HttpCode, HttpStatus, Query,
 } from '@nestjs/common';
 import { PropFirmShieldService } from './prop-firm-shield.service';
+import { SymbolMapperService } from '../copy-engine/symbol-mapper.service';
 import { PropFirmConfig } from './entities/prop-firm-config.entity';
+import { SymbolMapping } from '../copy-engine/entities/symbol-mapping.entity';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('prop-firm-shield')
 @UseGuards(JwtAuthGuard)
 export class PropFirmShieldController {
-    constructor(private readonly shieldService: PropFirmShieldService) {}
+    constructor(
+        private readonly shieldService: PropFirmShieldService,
+        private readonly symbolMapper: SymbolMapperService
+    ) {}
+
+    // ── Symbol Mapping Routes ───────────────────────────────────────────
+
+    @Get('symbols/mappings')
+    async getMappings() {
+        return this.symbolMapper.findAll();
+    }
+
+    @Post('symbols/mappings')
+    async createMapping(@Body() dto: Partial<SymbolMapping>) {
+        return this.symbolMapper.create(dto);
+    }
+
+    @Patch('symbols/mappings/:id')
+    async updateMapping(@Param('id') id: string, @Body() dto: Partial<SymbolMapping>) {
+        return this.symbolMapper.update(id, dto);
+    }
+
+    @Delete('symbols/mappings/:id')
+    async deleteMapping(@Param('id') id: string) {
+        return this.symbolMapper.remove(id);
+    }
+
+    @Get('symbols/simulate')
+    async simulateMapping(@Query('masterSymbol') masterSymbol: string, @Query('brokerName') brokerName?: string) {
+        if (!masterSymbol) return { result: '' };
+        const result = this.symbolMapper.getCompatibleSymbol(masterSymbol, brokerName);
+        return { result };
+    }
+
+    // ── Slave Config Routes ─────────────────────────────────────────────
 
     /** GET /prop-firm-shield/:slaveId — Get config for a slave */
     @Get(':slaveId')
@@ -53,3 +89,4 @@ export class PropFirmShieldController {
         return this.shieldService.getStats(slaveId);
     }
 }
+

@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToMany, JoinTable, OneToMany } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToMany, JoinTable, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
 import { Master } from '../../masters/entities/master.entity';
 import { Trade } from '../../trades/entities/trade.entity';
 import { User } from '../../users/entities/user.entity';
@@ -51,6 +51,10 @@ export class Slave {
 
     @Column({ nullable: true })
     userId: string;
+
+    @ManyToOne(() => User, user => user.slaves)
+    @JoinColumn({ name: 'userId' })
+    user: User;
 
     @Column({ type: 'decimal', precision: 20, scale: 8, default: 0 })
     balance: number;

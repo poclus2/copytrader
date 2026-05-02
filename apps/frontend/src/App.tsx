@@ -10,6 +10,7 @@ import SlaveDetails from './pages/SlaveDetails';
 import Users from './pages/Users';
 import UserDetail from './pages/UserDetail';
 import PropFirmProtection from './pages/PropFirmProtection';
+import Settings from './pages/Settings';
 
 function App() {
   return (
@@ -26,7 +27,7 @@ function App() {
           <Route path="users" element={<Users />} />
           <Route path="users/:id" element={<UserDetail />} />
           <Route path="prop-firm-protection" element={<PropFirmProtection />} />
-          <Route path="settings" element={<div>Settings Page</div>} />
+          <Route path="settings" element={<Settings />} />
         </Route>
       </Routes>
     </BrowserRouter>

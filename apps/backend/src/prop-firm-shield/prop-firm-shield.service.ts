@@ -4,6 +4,8 @@ import { Repository } from 'typeorm';
 import { PropFirmConfig } from './entities/prop-firm-config.entity';
 import { ShieldLog } from './entities/shield-log.entity';
 
+
+
 export interface ShieldedTradePayload {
     volume: number;
     jitterMs: number;
@@ -72,6 +74,7 @@ export class PropFirmShieldService {
         symbol: string,
         side: string,
         action: 'OPEN' | 'CLOSE',
+        brokerName?: string,
     ): Promise<ShieldedTradePayload> {
 
         // ── A. Temporal jitter ────────────────────────────────────────────────

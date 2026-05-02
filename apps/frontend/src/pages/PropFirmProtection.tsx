@@ -3,7 +3,7 @@ import { api } from '../api';
 import {
     Shield, ShieldCheck, ShieldOff, Activity,
     AlertTriangle, RefreshCw, ChevronDown, ChevronUp,
-    MoreHorizontal, Search, Save
+    Save
 } from 'lucide-react';
 
 interface Slave { id: string; name: string; broker: string; status: string; master?: { name: string }; }
@@ -22,7 +22,6 @@ const DEFAULT_CONFIG: Omit<PropFirmConfig, 'slaveId'> = {
     isEnabled: false, minJitter: 1000, maxJitter: 5000,
     lotVariation: 1.5, dailyLossLimit: 0, totalLossLimit: 0, customCommentPrefix: 'MNL_',
 };
-
 function Slider({ label, min, max, step, value, unit, onChange }: {
     label: string; min: number; max: number; step: number; value: number; unit: string; onChange: (v: number) => void;
 }) {

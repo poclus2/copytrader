@@ -128,6 +128,11 @@ export default function Masters() {
                                     <input className="form-control" type="password" placeholder="••••••••"
                                         onChange={e => setNewMaster({ ...newMaster, credentials: { ...newMaster.credentials, password: e.target.value } })} />
                                 </div>
+                                <div className="form-group">
+                                    <label className="form-label">Serveur Broker</label>
+                                    <input className="form-control" placeholder="ex: ICMarkets-Demo"
+                                        onChange={e => setNewMaster({ ...newMaster, credentials: { ...newMaster.credentials, server: e.target.value } })} />
+                                </div>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 8 }}>
                                 <button type="button" className="btn btn-outline" onClick={() => setIsCreating(false)}>

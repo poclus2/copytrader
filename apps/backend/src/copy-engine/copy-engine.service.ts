@@ -5,6 +5,7 @@ import { MastersService } from '../masters/masters.service';
 import { MT5BridgeService } from '../metatrader-connection/mt5-bridge.service';
 import { TradesService } from '../trades/trades.service';
 import { PropFirmShieldService } from '../prop-firm-shield/prop-firm-shield.service';
+import { SymbolMapperService } from './symbol-mapper.service';
 
 @Injectable()
 export class CopyEngineService implements OnModuleInit, OnModuleDestroy {
@@ -20,6 +21,7 @@ export class CopyEngineService implements OnModuleInit, OnModuleDestroy {
         private mt5BridgeService: MT5BridgeService,
         private tradesService: TradesService,
         private propFirmShieldService: PropFirmShieldService,
+        private symbolMapperService: SymbolMapperService,
     ) { }
 
     onModuleInit() {
@@ -210,6 +212,29 @@ export class CopyEngineService implements OnModuleInit, OnModuleDestroy {
                 slave.equity
             );
 
+            // 0. Symbol Normalization (Global for all slaves)
+            const finalSymbol = this.symbolMapperService.getCompatibleSymbol(trade.symbol, slave.broker);
+
+            if (slave.type === 'VIRTUAL') {
+                if (quantity <= 0) {
+                    this.logger.warn(`Calculated quantity is ${quantity} for slave ${slave.id}, skipping order.`);
+                    continue;
+                }
+                // Save virtual trade
+                await this.tradesService.create({
+                    slaveId: slave.id,
+                    sourceTradeId: trade.masterTradeId,
+                    symbol: finalSymbol,
+                    type: trade.side,
+                    volume: quantity,
+                    openPrice: trade.price,
+                    status: 'OPEN',
+                    openTime: new Date(),
+                });
+                
+                continue; // Done for this virtual slave
+            }
+
             if (quantity <= 0) {
                 this.logger.warn(`Calculated quantity is ${quantity} for slave ${slave.id}, skipping order.`);
                 continue;
@@ -241,6 +266,7 @@ export class CopyEngineService implements OnModuleInit, OnModuleDestroy {
                     trade.symbol,
                     trade.side,
                     'OPEN',
+                    slave.broker
                 );
 
                 if (payload.blockedByEquityGuard) {
@@ -290,24 +316,28 @@ export class CopyEngineService implements OnModuleInit, OnModuleDestroy {
                             port: slave.credentials.bridgePort
                         },
                         {
-                            symbol: trade.symbol,
+                            symbol: finalSymbol,
                             type: trade.side,
                             volume: finalQuantity,
                         }
                     );
 
                     if (!result.success) {
-                        this.logger.error(`Failed to place trade on slave ${slave.id}: ${result.error}`);
+                        let errorMessage = result.error || 'Unknown error';
+                        if (errorMessage.toLowerCase().includes('symbol') || errorMessage.toLowerCase().includes('invalid')) {
+                            errorMessage = `Critical: Unmapped Symbol - ${trade.symbol} not recognized by Slave Broker`;
+                        }
+                        this.logger.error(`Failed to place trade on slave ${slave.id}: ${errorMessage}`);
                         // Save as FAILED so user knows it was attempted but failed
                         await this.tradesService.create({
                             slaveId: slave.id,
                             sourceTradeId: trade.masterTradeId,
-                            symbol: trade.symbol,
+                            symbol: finalSymbol,
                             type: trade.side,
                             volume: finalQuantity,
                             openPrice: trade.price,
                             status: 'FAILED',
-                            errorMessage: result.error || 'Unknown error',
+                            errorMessage: errorMessage,
                             openTime: new Date(),
                         });
                         continue;
@@ -319,7 +349,7 @@ export class CopyEngineService implements OnModuleInit, OnModuleDestroy {
                         slaveId: slave.id,
                         sourceTradeId: trade.masterTradeId, // Link to master trade
                         ticket: result.ticket ? String(result.ticket) : undefined, // Store MT5 ticket
-                        symbol: trade.symbol,
+                        symbol: finalSymbol,
                         type: trade.side,
                         volume: finalQuantity,
                         openPrice: result.price || trade.price, // Use actual execution price if available
@@ -331,7 +361,7 @@ export class CopyEngineService implements OnModuleInit, OnModuleDestroy {
                 } else {
                     // Place trade via mock adapter (for other brokers)
                     await this.brokerAdapter.placeOrder({
-                        symbol: trade.symbol,
+                        symbol: finalSymbol,
                         side: trade.side,
                         type: 'MARKET',
                         quantity: finalQuantity,
@@ -341,7 +371,7 @@ export class CopyEngineService implements OnModuleInit, OnModuleDestroy {
                     await this.tradesService.create({
                         slaveId: slave.id,
                         sourceTradeId: trade.masterTradeId,
-                        symbol: trade.symbol,
+                        symbol: finalSymbol,
                         type: trade.side,
                         volume: finalQuantity,
                         openPrice: trade.price,
@@ -467,6 +497,9 @@ export class CopyEngineService implements OnModuleInit, OnModuleDestroy {
                 const slave = slavesMap.get(slaveTrade.slaveId);
                 if (!slave) continue;
 
+                // Apply mapping for closure as well
+                const finalSymbol = this.symbolMapperService.getCompatibleSymbol(slaveTrade.symbol, slave.broker);
+
                 this.logger.log(`Closing trade for slave ${slave.name} (Ticket: ${slaveTrade.ticket})`);
 
                 try {
@@ -493,10 +526,14 @@ export class CopyEngineService implements OnModuleInit, OnModuleDestroy {
                             this.logger.log(`Successfully closed slave trade ${slaveTrade.id}`);
                         } else {
                             // Mark as CLOSE_FAILED so it is visible in dashboard and can be retried manually
-                            this.logger.error(`Failed to close slave trade ${slaveTrade.id}: ${result.error}`);
+                            let errorMessage = result.error || 'MT5 Bridge returned failure on close';
+                            if (errorMessage.toLowerCase().includes('symbol') || errorMessage.toLowerCase().includes('invalid')) {
+                                errorMessage = `Critical: Unmapped Symbol - ${slaveTrade.symbol} not recognized by Slave Broker`;
+                            }
+                            this.logger.error(`Failed to close slave trade ${slaveTrade.id}: ${errorMessage}`);
                             await this.tradesService.update(slaveTrade.id, {
                                 status: 'CLOSE_FAILED',
-                                errorMessage: result.error || 'MT5 Bridge returned failure on close',
+                                errorMessage: errorMessage,
                             });
                         }
                     } else {

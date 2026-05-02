@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api, type Master } from '../api';
 import {
     ArrowLeft, Save, Trash2, CheckCircle, XCircle, AlertTriangle,
     RefreshCw, UserCog, DollarSign, TrendingUp, TrendingDown,
-    Server, Settings, Activity, ChevronLeft, ChevronRight, Monitor
+    Server, Settings, Activity, ChevronLeft, ChevronRight, Monitor,
+    Play, StopCircle, HelpCircle, Wifi, WifiOff, Maximize
 } from 'lucide-react';
 import { BROKERS } from '../brokers.config';
 import ErrorBoundary from '../components/ErrorBoundary';
@@ -55,10 +56,25 @@ export default function MasterDetails() {
     const [accountInfo, setAccountInfo] = useState({ balance: 0, equity: 0 });
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [saveSuccess, setSaveSuccess] = useState(false);
-    const [activeTab, setActiveTab] = useState<'profile' | 'connection'>('profile');
+    const [activeTab, setActiveTab] = useState<'profile' | 'connection' | 'vnc'>('profile');
+    const [isFullscreen, setIsFullscreen] = useState(false);
+    const vncContainerRef = useRef<HTMLDivElement>(null);
+
+    // ── Container state ──────────────────────────────────────────────────────
+    const [containerStatus, setContainerStatus] = useState<{
+        status: 'running' | 'stopped' | 'not_found' | 'error' | 'loading';
+        containerName?: string;
+        vncPort?: number;
+        bridgePort?: number;
+        startedAt?: string;
+    }>({ status: 'loading' });
+    const [isStartingContainer, setIsStartingContainer] = useState(false);
+    const [startContainerMsg, setStartContainerMsg] = useState('');
 
     useEffect(() => { fetchMaster(); fetchTrades(1); }, [id]);
     useEffect(() => { if (master?.credentials?.bridgeIp) fetchAccountInfo(); }, [master]);
+    // Fetch container status when VNC tab is opened
+    useEffect(() => { if (activeTab === 'vnc' && id) fetchContainerStatus(); }, [activeTab, id]);
 
     const fetchMaster = async () => {
         try {
@@ -94,8 +110,82 @@ export default function MasterDetails() {
     const handleRefresh = async () => {
         setIsRefreshing(true);
         await Promise.all([fetchMaster(), fetchTrades(currentPage), fetchAccountInfo()]);
+        if (activeTab === 'vnc') await fetchContainerStatus();
         setIsRefreshing(false);
     };
+
+    const fetchContainerStatus = async () => {
+        setContainerStatus({ status: 'loading' });
+        try {
+            const r = await api.get(`/masters/${id}/container-status`);
+            setContainerStatus(r.data);
+        } catch {
+            setContainerStatus({ status: 'error' });
+        }
+    };
+
+    const handleStartContainer = async () => {
+        setIsStartingContainer(true);
+        setStartContainerMsg('');
+        try {
+            const r = await api.post(`/masters/${id}/start-container`);
+            setStartContainerMsg(r.data.message);
+            // Repoll status after 3s to let the container boot
+            setTimeout(() => fetchContainerStatus(), 3000);
+        } catch (err: any) {
+            setStartContainerMsg(err.response?.data?.message || 'Erreur lors du démarrage');
+        } finally {
+            setIsStartingContainer(false);
+        }
+    };
+
+    const handleCreateContainer = async () => {
+        if (!confirm("Voulez-vous créer et provisionner un nouveau container MT5 pour ce compte ?")) return;
+        setIsStartingContainer(true);
+        setStartContainerMsg('Création en cours...');
+        try {
+            const r = await api.post(`/masters/${id}/create-container`);
+            setStartContainerMsg(r.data.message);
+            setTimeout(() => fetchContainerStatus(), 2000);
+        } catch (err: any) {
+            setStartContainerMsg(err.response?.data?.message || 'Erreur lors de la création');
+        } finally {
+            setIsStartingContainer(false);
+        }
+    };
+
+    const handleRemoveContainer = async () => {
+        if (!confirm("Attention : Voulez-vous vraiment détruire ce container MT5 ? Cela n'affectera pas l'historique mais vous déconnectera du broker.")) return;
+        setIsStartingContainer(true);
+        setStartContainerMsg('Suppression en cours...');
+        try {
+            const r = await api.post(`/masters/${id}/remove-container`);
+            setStartContainerMsg(r.data.message);
+            setTimeout(() => fetchContainerStatus(), 2000);
+        } catch (err: any) {
+            setStartContainerMsg(err.response?.data?.message || 'Erreur lors de la suppression');
+        } finally {
+            setIsStartingContainer(false);
+        }
+    };
+
+    const toggleFullscreen = () => {
+        if (!document.fullscreenElement) {
+            vncContainerRef.current?.requestFullscreen().catch(err => {
+                alert(`Error attempting to enable fullscreen: ${err.message}`);
+            });
+        } else {
+            document.exitFullscreen();
+        }
+    };
+
+    useEffect(() => {
+        const handleFullscreenChange = () => {
+            setIsFullscreen(!!document.fullscreenElement);
+        };
+        document.addEventListener('fullscreenchange', handleFullscreenChange);
+        return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    }, []);
 
     const totalProfit = Array.isArray(trades)
         ? trades.reduce((a, t) => a + Number(t.profit || 0), 0) : 0;
@@ -113,7 +203,7 @@ export default function MasterDetails() {
     };
 
     const handleDelete = async () => {
-        if (!confirm('Supprimer ce master ? Cette action est irréversible.')) return;
+        if (!confirm('Supprimer ce master ? Cette action supprimera également le conteneur Docker associé de façon irréversible.')) return;
         try { await api.delete(`/masters/${id}`); navigate('/masters'); }
         catch { alert('Échec de la suppression'); }
     };
@@ -122,7 +212,7 @@ export default function MasterDetails() {
         if (!master) return;
         setIsTestingConnection(true); setConnectionMessage(''); setConnectionStatus('idle');
         try {
-            const r = await api.post('/brokers/metatrader/verify-connection', {
+            const r = await api.post('/brokers/metatrader/test-connection', {
                 ...master.credentials, platform: master.credentials.platform || 'mt5'
             });
             if (r.data.success) {
@@ -361,19 +451,133 @@ export default function MasterDetails() {
 
                         {/* ── Tab: VNC ───────────────────────────────── */}
                         {activeTab === 'vnc' && (
-                            <div style={{ height: 600, width: '100%', backgroundColor: '#000', borderRadius: 8, overflow: 'hidden' }}>
-                                {master.credentials?.vncPort ? (
-                                    <iframe 
-                                        src={`http://localhost:${master.credentials.vncPort}`} 
-                                        style={{ width: '100%', height: '100%', border: 'none' }}
-                                        title="VNC Terminal"
-                                    />
-                                ) : (
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>
-                                        <AlertTriangle size={24} style={{ marginRight: 8 }} />
-                                        Le port VNC n'est pas configuré pour ce Master.
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+                                {/* Container status banner */}
+                                <div style={{
+                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                    padding: '12px 16px', borderRadius: 10,
+                                    background: containerStatus.status === 'running'
+                                        ? 'rgba(34,197,94,0.08)' : containerStatus.status === 'loading'
+                                        ? 'rgba(99,102,241,0.08)' : 'rgba(239,68,68,0.08)',
+                                    border: `1px solid ${
+                                        containerStatus.status === 'running' ? 'rgba(34,197,94,0.25)'
+                                        : containerStatus.status === 'loading' ? 'rgba(99,102,241,0.25)'
+                                        : 'rgba(239,68,68,0.25)'}`
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                        {containerStatus.status === 'loading' && <RefreshCw size={16} className="animate-spin" style={{ color: 'var(--primary)' }} />}
+                                        {containerStatus.status === 'running' && <Wifi size={16} style={{ color: 'var(--success)' }} />}
+                                        {(containerStatus.status === 'stopped' || containerStatus.status === 'not_found' || containerStatus.status === 'error') && <WifiOff size={16} style={{ color: 'var(--danger)' }} />}
+                                        <div>
+                                            <div style={{ fontSize: 13, fontWeight: 600,
+                                                color: containerStatus.status === 'running' ? 'var(--success)'
+                                                    : containerStatus.status === 'loading' ? 'var(--primary)'
+                                                    : 'var(--danger)' }}>
+                                                {containerStatus.status === 'loading' && 'Vérification du container…'}
+                                                {containerStatus.status === 'running' && '🟢 Container MT5 en cours d\'exécution'}
+                                                {containerStatus.status === 'stopped' && '🔴 Container MT5 arrêté'}
+                                                {containerStatus.status === 'not_found' && '⚠️ Aucun container trouvé pour ce Master'}
+                                                {containerStatus.status === 'error' && '❌ Erreur de communication avec Docker'}
+                                            </div>
+                                            {containerStatus.containerName && (
+                                                <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace', marginTop: 2 }}>
+                                                    {containerStatus.containerName}
+                                                    {containerStatus.vncPort && ` · VNC :${containerStatus.vncPort}`}
+                                                    {containerStatus.bridgePort && ` · Bridge :${containerStatus.bridgePort}`}
+                                                    {containerStatus.startedAt && ` · ${containerStatus.startedAt}`}
+                                                </div>
+                                            )}
+                                            {startContainerMsg && (
+                                                <div style={{ fontSize: 11, marginTop: 4,
+                                                    color: containerStatus.status === 'running' ? 'var(--success)' : 'var(--warning)' }}>
+                                                    {startContainerMsg}
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
-                                )}
+                                    <div style={{ display: 'flex', gap: 8 }}>
+                                        {containerStatus.status === 'not_found' && (
+                                            <button className="btn btn-primary btn-sm" onClick={handleCreateContainer} disabled={isStartingContainer}>
+                                                {isStartingContainer
+                                                    ? <><RefreshCw size={13} className="animate-spin" /> Création…</>
+                                                    : <><Server size={13} /> Créer le Container</>}
+                                            </button>
+                                        )}
+                                        {containerStatus.status === 'stopped' && (
+                                            <button className="btn btn-primary btn-sm" onClick={handleStartContainer} disabled={isStartingContainer}>
+                                                {isStartingContainer
+                                                    ? <><RefreshCw size={13} className="animate-spin" /> Démarrage…</>
+                                                    : <><Play size={13} /> Démarrer le Container</>}
+                                            </button>
+                                        )}
+                                        {containerStatus.status !== 'not_found' && containerStatus.status !== 'loading' && containerStatus.status !== 'error' && (
+                                            <button className="btn btn-outline btn-sm" style={{ color: 'var(--danger)', borderColor: 'rgba(239,68,68,0.3)' }} onClick={handleRemoveContainer} disabled={isStartingContainer}>
+                                                {isStartingContainer
+                                                    ? <RefreshCw size={13} className="animate-spin" />
+                                                    : <Trash2 size={13} />}
+                                            </button>
+                                        )}
+                                        <button className="btn btn-outline btn-sm" onClick={fetchContainerStatus} disabled={containerStatus.status === 'loading'}>
+                                            <RefreshCw size={13} className={containerStatus.status === 'loading' ? 'animate-spin' : ''} />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* VNC iframe — only shown when container is running */}
+                                <div ref={vncContainerRef} style={{
+                                    height: isFullscreen ? '100vh' : 520, 
+                                    width: isFullscreen ? '100vw' : '100%', 
+                                    borderRadius: isFullscreen ? 0 : 10, 
+                                    overflow: 'hidden',
+                                    background: '#0d0d0d',
+                                    border: isFullscreen ? 'none' : '1px solid var(--border)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    position: 'relative'
+                                }}>
+                                    {containerStatus.status === 'running' && (containerStatus.vncPort || master.credentials?.vncPort) ? (
+                                        <>
+                                            <iframe
+                                                src={`http://localhost:${containerStatus.vncPort || master.credentials.vncPort}`}
+                                                style={{ width: '100%', height: '100%', border: 'none' }}
+                                                title="VNC Terminal"
+                                            />
+                                            <button 
+                                                onClick={toggleFullscreen}
+                                                style={{
+                                                    position: 'absolute', top: 16, right: 16,
+                                                    background: 'rgba(0,0,0,0.5)', border: 'none', borderRadius: 8,
+                                                    color: 'white', padding: 8, cursor: 'pointer',
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                    backdropFilter: 'blur(4px)',
+                                                    transition: 'background 0.2s'
+                                                }}
+                                                onMouseOver={e => e.currentTarget.style.background = 'rgba(0,0,0,0.8)'}
+                                                onMouseOut={e => e.currentTarget.style.background = 'rgba(0,0,0,0.5)'}
+                                                title="Plein écran"
+                                            >
+                                                <Maximize size={18} />
+                                            </button>
+                                        </>
+                                    ) : containerStatus.status === 'loading' ? (
+                                        <div style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                                            <RefreshCw size={32} className="animate-spin" style={{ margin: '0 auto 12px', display: 'block', color: 'var(--primary)' }} />
+                                            <p style={{ fontSize: 13 }}>Vérification de l'état du container…</p>
+                                        </div>
+                                    ) : (
+                                        <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 32 }}>
+                                            <Monitor size={48} style={{ margin: '0 auto 16px', display: 'block', opacity: 0.3 }} />
+                                            <p style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>Terminal VNC non disponible</p>
+                                            <p style={{ fontSize: 12, maxWidth: 320, margin: '0 auto' }}>
+                                                {containerStatus.status === 'not_found'
+                                                    ? 'Le container Docker MT5 n\'a pas encore été créé. Recréez ce Master pour provisionner un nouveau container.'
+                                                    : containerStatus.status === 'stopped'
+                                                    ? 'Le container est arrêté. Cliquez sur "Démarrer le Container" ci-dessus pour le relancer.'
+                                                    : 'Impossible de communiquer avec Docker. Vérifiez que Docker Desktop est actif.'}
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         )}
                     </div>

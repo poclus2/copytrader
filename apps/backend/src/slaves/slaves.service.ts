@@ -40,7 +40,7 @@ export class SlavesService {
     const masters = await Promise.all(
       masterIds.map(id => this.mastersService.findOne(id))
     );
-    const validMasters = masters.filter(Boolean);
+    const validMasters = masters.filter((m): m is import('../masters/entities/master.entity').Master => !!m);
 
     const slave = this.slavesRepository.create({
       ...rest,
@@ -49,9 +49,9 @@ export class SlavesService {
       virtualBalance,
       isFundingLocked,
       status: initialStatus,
-      masters: validMasters,   // ← relation ManyToMany
       user: { id: userId }
     });
+    slave.masters = validMasters;
     let savedSlave = await this.slavesRepository.save(slave);
 
     // Si c'est un compte MetaTrader, lancer la création dynamique Docker

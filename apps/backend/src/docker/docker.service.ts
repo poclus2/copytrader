@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import * as Docker from 'dockerode';
+import Docker from 'dockerode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { promises as fsPromises } from 'fs';
@@ -68,24 +68,37 @@ export class DockerService implements OnModuleInit {
     }
 
     /**
-     * Génère le fichier startup.ini pour MT5
+     * Génère le fichier startup.ini pour MT5 avec auto-login
+     * Utilise le format natif de terminal64.exe pour se connecter automatiquement
      */
-    private async generateStartupIni(containerName: string, credentials: any): Promise<string> {
-        const port = 5000; // Port standard pour notre Bridge
-        const iniContent = `[Common]
-Login=${credentials.login || ''}
-Password=${credentials.password || ''}
-Server=${credentials.server || ''}
-CertInstall=0
-[Charts]
-Profile=BridgeProfile
-[Experts]
-HarestechBridge_Draft.ex5=EURUSD,M1,port=${port}
-`;
+    async generateStartupIni(containerName: string, credentials: any): Promise<string> {
+        const iniContent = [
+            '[Common]',
+            `Login=${credentials.login || ''}`,
+            `Password=${credentials.password || ''}`,
+            `Server=${credentials.server || ''}`,
+            'CertInstall=0',
+            'AutoLogin=1',          // Connexion automatique au démarrage
+            'SavePassword=1',       // Conserver le mot de passe
+            'NewsEnable=0',         // Désactiver les news (accélère le démarrage)
+            '',
+            '[Charts]',
+            'Profile=BridgeProfile',
+            '',
+            '[Experts]',
+            'AllowDllImport=1',
+            '',
+            '[StartUp]',            // Section exécutée au démarrage
+            `Expert=HarestechBridge_Draft`,
+            'Symbol=EURUSD',
+            'Period=1',             // M1
+        ].join('\r\n');
+
         const iniFileName = `${containerName}.ini`;
         const iniFilePath = path.join(this.CONFIGS_DIR, iniFileName);
         
         await fsPromises.writeFile(iniFilePath, iniContent, 'utf-8');
+        this.logger.log(`startup.ini generated at ${iniFilePath} (login=${credentials.login}, server=${credentials.server})`);
         return iniFilePath;
     }
 
@@ -132,7 +145,7 @@ HarestechBridge_Draft.ex5=EURUSD,M1,port=${port}
                         '5000/tcp': [{ HostPort: `${bridgePort}` }] // Port TCP Bridge MT5
                     },
                     Binds: [
-                        // 1. On injecte le fichier config auto-login
+                        // 1. On injecte le fichier config auto-login dans le répertoire de MT5
                         `${iniFilePath}:/config/.wine/drive_c/Program Files/MetaTrader 5/startup.ini`,
                         // 2. On injecte le Bridge EA directement dans le MetaTrader
                         `${path.join(process.cwd(), 'src', 'metatrader-connection', 'mql5', 'HarestechBridge_Draft.ex5')}:/config/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Experts/HarestechBridge_Draft.ex5`
@@ -143,12 +156,28 @@ HarestechBridge_Draft.ex5=EURUSD,M1,port=${port}
                     'CUSTOM_USER=copytrader',
                     'PASSWORD=copytrader',
                     'VNC_PASSWORD=copytrader',
+                    // Le fichier est bindé dans C:\Program Files\MetaTrader 5\startup.ini
+                    // Wine comprend le chemin Windows "C:\...". Les guillemets provoquent des problèmes de parsing dans wine/MT5.
+                    'MT5_CMD_OPTIONS=/portable /config:C:\\Program Files\\MetaTrader 5\\startup.ini'
                 ]
             };
 
             const container = await this.docker.createContainer(containerOptions);
             await container.start();
             
+            // FIX: Correction automatique des permissions pour l'utilisateur interne 'abc'
+            // Cela évite l'écran noir car l'utilisateur pourra écrire dans le dossier Wine.
+            try {
+                const exec = await container.exec({
+                    Cmd: ['chown', '-R', 'abc:abc', '/config/.wine'],
+                    User: 'root'
+                });
+                await exec.start({});
+                this.logger.log(`Permissions fixed for container ${containerName}`);
+            } catch (e) {
+                this.logger.warn(`Could not fix permissions for ${containerName}: ${e.message}`);
+            }
+
             this.logger.log(`Container ${containerName} started successfully (VNC: ${vncPort}, Bridge: ${bridgePort}).`);
             
             return {
@@ -181,6 +210,98 @@ HarestechBridge_Draft.ex5=EURUSD,M1,port=${port}
             return true;
         } catch (error) {
             return false;
+        }
+    }
+
+    /**
+     * Retourne l'état détaillé du conteneur MT5 (running, stopped, not found...)
+     */
+    async getContainerStatus(id: string, isMaster: boolean): Promise<{
+        status: 'running' | 'stopped' | 'not_found' | 'error';
+        containerName: string;
+        vncPort?: number;
+        bridgePort?: number;
+        startedAt?: string;
+        image?: string;
+    }> {
+        const prefix = isMaster ? 'mt5-master' : 'mt5-slave';
+        const containerName = `${prefix}-${id}`;
+
+        try {
+            const matches = await this.docker.listContainers({
+                all: true,
+                filters: { name: [containerName] },
+            });
+
+            if (matches.length === 0) {
+                return { status: 'not_found', containerName };
+            }
+
+            const c = matches[0];
+            const vncPort = c.Ports?.find(p => p.PrivatePort === 3000)?.PublicPort;
+            const bridgePort = c.Ports?.find(p => p.PrivatePort === 5000)?.PublicPort;
+
+            const isRunning = c.State === 'running';
+            return {
+                status: isRunning ? 'running' : 'stopped',
+                containerName,
+                vncPort,
+                bridgePort,
+                startedAt: c.Status,
+                image: c.Image,
+            };
+        } catch (error) {
+            this.logger.error(`Error checking container status for ${containerName}:`, error);
+            return { status: 'error', containerName };
+        }
+    }
+
+    /**
+     * Démarre un conteneur MT5 existant qui serait stoppé.
+     * Si des credentials sont fournis, le startup.ini est régénéré avant le démarrage
+     * pour s'assurer que MT5 se connecte automatiquement avec les bons identifiants.
+     */
+    async startContainer(id: string, isMaster: boolean, credentials?: any): Promise<{
+        success: boolean;
+        message: string;
+        containerName: string;
+    }> {
+        const prefix = isMaster ? 'mt5-master' : 'mt5-slave';
+        const containerName = `${prefix}-${id}`;
+
+        try {
+            const matches = await this.docker.listContainers({
+                all: true,
+                filters: { name: [containerName] },
+            });
+
+            if (matches.length === 0) {
+                return { success: false, message: 'Container not found. Please recreate the master.', containerName };
+            }
+
+            const c = matches[0];
+            if (c.State === 'running') {
+                return { success: true, message: 'Container is already running.', containerName };
+            }
+
+            // Régénérer le startup.ini avec les credentials frais avant le redémarrage
+            // Le fichier est bind-mounté, donc MT5 lira la version mise à jour
+            if (credentials && (credentials.login || credentials.password || credentials.server)) {
+                try {
+                    await this.generateStartupIni(containerName, credentials);
+                    this.logger.log(`startup.ini refreshed for ${containerName} before restart`);
+                } catch (e) {
+                    this.logger.warn(`Could not refresh startup.ini for ${containerName}: ${e.message}`);
+                }
+            }
+
+            const container = this.docker.getContainer(c.Id);
+            await container.start();
+            this.logger.log(`Container ${containerName} started via API request.`);
+            return { success: true, message: 'Container started successfully.', containerName };
+        } catch (error) {
+            this.logger.error(`Error starting container ${containerName}:`, error);
+            return { success: false, message: error.message, containerName };
         }
     }
 }
