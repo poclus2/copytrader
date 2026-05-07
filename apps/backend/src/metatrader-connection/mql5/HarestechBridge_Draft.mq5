@@ -242,6 +242,11 @@ string HandlePlaceTrade(CJAVal &json)
    double volume = json["volume"].ToDbl();
    double sl = json["sl"].ToDbl();
    double tp = json["tp"].ToDbl();
+   ulong magicNumber = (ulong)json["magicNumber"].ToInt();
+   string comment = json["comment"].ToStr();
+   
+   if(comment == "") comment = "CopyTrade";
+   if(magicNumber > 0) trade.SetExpertMagicNumber(magicNumber);
    
    // Validate symbol
    if(!SymbolSelect(symbol, true))
@@ -271,7 +276,7 @@ string HandlePlaceTrade(CJAVal &json)
    double price = (type == "BUY") ? SymbolInfoDouble(symbol, SYMBOL_ASK) : SymbolInfoDouble(symbol, SYMBOL_BID);
    
    // Execute trade
-   if(trade.PositionOpen(symbol, orderType, volume, price, sl, tp, "CopyTrade"))
+   if(trade.PositionOpen(symbol, orderType, volume, price, sl, tp, comment))
      {
       ulong ticket = trade.ResultOrder();
       
@@ -377,6 +382,8 @@ string HandleGetTrades(CJAVal &json)
             jsonResponse += "\"symbol\":\"" + HistoryDealGetString(dealTicket, DEAL_SYMBOL) + "\",";
             jsonResponse += "\"volume\":" + DoubleToString(HistoryDealGetDouble(dealTicket, DEAL_VOLUME), 2) + ",";
             jsonResponse += "\"price\":" + DoubleToString(HistoryDealGetDouble(dealTicket, DEAL_PRICE), 5) + ",";
+            jsonResponse += "\"sl\":0.0,";
+            jsonResponse += "\"tp\":0.0,";
             jsonResponse += "\"profit\":" + DoubleToString(HistoryDealGetDouble(dealTicket, DEAL_PROFIT), 2) + ",";
             jsonResponse += "\"commission\":" + DoubleToString(HistoryDealGetDouble(dealTicket, DEAL_COMMISSION), 2) + ",";
             jsonResponse += "\"swap\":" + DoubleToString(HistoryDealGetDouble(dealTicket, DEAL_SWAP), 2);
@@ -406,6 +413,8 @@ string HandleGetTrades(CJAVal &json)
          jsonResponse += "\"symbol\":\"" + PositionGetString(POSITION_SYMBOL) + "\",";
          jsonResponse += "\"volume\":" + DoubleToString(PositionGetDouble(POSITION_VOLUME), 2) + ",";
          jsonResponse += "\"price\":" + DoubleToString(PositionGetDouble(POSITION_PRICE_OPEN), 5) + ",";
+         jsonResponse += "\"sl\":" + DoubleToString(PositionGetDouble(POSITION_SL), 5) + ",";
+         jsonResponse += "\"tp\":" + DoubleToString(PositionGetDouble(POSITION_TP), 5) + ",";
          jsonResponse += "\"profit\":" + DoubleToString(PositionGetDouble(POSITION_PROFIT), 2) + ",";
          jsonResponse += "\"commission\":0.0,";
          jsonResponse += "\"swap\":" + DoubleToString(PositionGetDouble(POSITION_SWAP), 2);

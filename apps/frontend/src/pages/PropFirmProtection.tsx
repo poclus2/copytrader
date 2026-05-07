@@ -10,6 +10,7 @@ interface Slave { id: string; name: string; broker: string; status: string; mast
 interface PropFirmConfig {
     slaveId: string; isEnabled: boolean; minJitter: number; maxJitter: number;
     lotVariation: number; dailyLossLimit: number; totalLossLimit: number; customCommentPrefix: string;
+    useDecoySlTp: boolean; decoyOffsetPips: number;
 }
 interface ShieldStats { totalOrders: number; blockedOrders: number; avgJitterMs: number; }
 interface ShieldLog {
@@ -21,6 +22,7 @@ interface ShieldLog {
 const DEFAULT_CONFIG: Omit<PropFirmConfig, 'slaveId'> = {
     isEnabled: false, minJitter: 1000, maxJitter: 5000,
     lotVariation: 1.5, dailyLossLimit: 0, totalLossLimit: 0, customCommentPrefix: 'MNL_',
+    useDecoySlTp: false, decoyOffsetPips: 20,
 };
 function Slider({ label, min, max, step, value, unit, onChange }: {
     label: string; min: number; max: number; step: number; value: number; unit: string; onChange: (v: number) => void;
@@ -261,18 +263,65 @@ export default function PropFirmProtection() {
                                         </p>
                                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                                             <div className="form-group">
-                                                <label className="form-label">Perte journalière max ($)</label>
-                                                <input className="form-control" type="number" min={0} step={100}
-                                                    value={config.dailyLossLimit} placeholder="ex: 4500"
+                                                <label className="form-label">Perte journalière max (%)</label>
+                                                <input className="form-control" type="number" min={0} step={0.1}
+                                                    value={config.dailyLossLimit} placeholder="ex: 5"
                                                     onChange={e => setConfig(p => ({ ...p, dailyLossLimit: parseFloat(e.target.value) || 0 }))} />
                                             </div>
                                             <div className="form-group">
-                                                <label className="form-label">Perte totale max ($)</label>
-                                                <input className="form-control" type="number" min={0} step={100}
-                                                    value={config.totalLossLimit} placeholder="ex: 10000"
+                                                <label className="form-label">Perte totale max (%)</label>
+                                                <input className="form-control" type="number" min={0} step={0.1}
+                                                    value={config.totalLossLimit} placeholder="ex: 10"
                                                     onChange={e => setConfig(p => ({ ...p, totalLossLimit: parseFloat(e.target.value) || 0 }))} />
                                             </div>
                                         </div>
+                                    </div>
+
+                                    {/* Decoy SL/TP */}
+                                    <div style={{ background: 'var(--bg-page)', borderRadius: 'var(--radius-sm)', padding: '14px 16px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                                            <div style={{ fontSize: 11, fontWeight: 700, color: '#F97316', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                                                🎯 Decoy SL / TP
+                                            </div>
+                                            {/* Toggle */}
+                                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                                                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                                                    {config.useDecoySlTp ? 'Actif' : 'Inactif'}
+                                                </span>
+                                                <div
+                                                    onClick={() => setConfig(p => ({ ...p, useDecoySlTp: !p.useDecoySlTp }))}
+                                                    style={{
+                                                        width: 36, height: 20, borderRadius: 10, cursor: 'pointer',
+                                                        background: config.useDecoySlTp ? '#F97316' : 'var(--border)',
+                                                        position: 'relative', transition: 'background 0.2s',
+                                                    }}
+                                                >
+                                                    <div style={{
+                                                        position: 'absolute', top: 2,
+                                                        left: config.useDecoySlTp ? 18 : 2,
+                                                        width: 16, height: 16, borderRadius: '50%',
+                                                        background: '#fff', transition: 'left 0.2s',
+                                                    }} />
+                                                </div>
+                                            </label>
+                                        </div>
+                                        <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 12 }}>
+                                            Envoie au Slave des SL/TP <strong>légèrement décalés</strong> par rapport au Master.
+                                            La vraie sortie reste gérée par notre serveur. Ces leurres brouillent
+                                            la signature de trade et servent de Hard Fallback en cas de crash.
+                                        </p>
+                                        <Slider
+                                            label="Distance d'obfuscation"
+                                            min={5} max={100} step={1}
+                                            value={config.decoyOffsetPips}
+                                            unit=" pips"
+                                            onChange={v => setConfig(p => ({ ...p, decoyOffsetPips: v }))}
+                                        />
+                                        {config.useDecoySlTp && (
+                                            <p style={{ fontSize: 10, color: '#F97316', marginTop: 4, fontStyle: 'italic' }}>
+                                                ⚠ Offset aléatoire entre {Math.round(config.decoyOffsetPips / 2)} et {config.decoyOffsetPips} pips — jamais identique entre deux slaves.
+                                            </p>
+                                        )}
                                     </div>
 
                                     {/* Comment Prefix */}

@@ -26,8 +26,8 @@ export class CreateSlaveDto {
     // ─────────────────────────────────────────────────────────────────
 
     @IsUUID()
-    @IsNotEmpty()
-    userId: string;
+    @IsOptional()
+    userId?: string;
 
     @IsNumber()
     @IsOptional()

@@ -78,6 +78,7 @@ export class MastersController {
         ...master.credentials,
         vncPort: containerInfo.vncPort,
         bridgePort: containerInfo.bridgePort,
+        bridgeIp: '127.0.0.1'
       }
     });
 

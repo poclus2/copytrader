@@ -28,6 +28,9 @@ export class SlavesService {
     const initialStatus = type === 'VIRTUAL' ? 'ACTIVE' : 'PENDING';
 
     if (type === 'VIRTUAL') {
+      if (!userId) {
+        throw new Error('User ID is required for virtual accounts');
+      }
       if (!initialBalance || initialBalance <= 0) {
         throw new Error('Initial balance is required for virtual accounts');
       }
@@ -49,7 +52,7 @@ export class SlavesService {
       virtualBalance,
       isFundingLocked,
       status: initialStatus,
-      user: { id: userId }
+      user: userId ? { id: userId } : undefined
     });
     slave.masters = validMasters;
     let savedSlave = await this.slavesRepository.save(slave);
@@ -124,8 +127,27 @@ export class SlavesService {
     return map;
   }
 
-  update(id: string, updateSlaveDto: UpdateSlaveDto) {
-    return this.slavesRepository.update(id, updateSlaveDto);
+  async update(id: string, updateSlaveDto: UpdateSlaveDto) {
+    const { masterIds, ...rest } = updateSlaveDto;
+
+    // Mise à jour des colonnes classiques
+    if (Object.keys(rest).length > 0) {
+      await this.slavesRepository.update(id, rest);
+    }
+
+    // Mise à jour de la relation ManyToMany si masterIds est fourni
+    if (masterIds) {
+      const slave = await this.findOne(id);
+      if (slave) {
+        const masters = await Promise.all(
+          masterIds.map(masterId => this.mastersService.findOne(masterId))
+        );
+        slave.masters = masters.filter((m): m is import('../masters/entities/master.entity').Master => !!m);
+        await this.slavesRepository.save(slave);
+      }
+    }
+
+    return this.findOne(id);
   }
 
   async remove(id: string) {

@@ -111,6 +111,8 @@ export class MT5BridgeService {
             volume: number;
             sl?: number;
             tp?: number;
+            magicNumber?: number;
+            comment?: string;
         }
     ): Promise<any> {
         return new Promise((resolve, reject) => {
@@ -131,7 +133,9 @@ export class MT5BridgeService {
                     type: trade.type,
                     volume: trade.volume,
                     sl: trade.sl || 0,
-                    tp: trade.tp || 0
+                    tp: trade.tp || 0,
+                    magicNumber: trade.magicNumber || 0,
+                    comment: trade.comment || ''
                 };
 
                 client.write(JSON.stringify(request));

@@ -13,6 +13,10 @@ export interface ShieldedTradePayload {
     comment: string;
     blockedByEquityGuard: boolean;
     blockReason?: string;
+    /** Obfuscated Stop Loss price to send to the slave broker (0 = not set) */
+    decoySl: number;
+    /** Obfuscated Take Profit price to send to the slave broker (0 = not set) */
+    decoyTp: number;
 }
 
 @Injectable()
@@ -75,6 +79,8 @@ export class PropFirmShieldService {
         side: string,
         action: 'OPEN' | 'CLOSE',
         brokerName?: string,
+        masterSl = 0,
+        masterTp = 0,
     ): Promise<ShieldedTradePayload> {
 
         // ── A. Temporal jitter ────────────────────────────────────────────────
@@ -97,6 +103,11 @@ export class PropFirmShieldService {
             config.totalLossLimit,
         );
 
+        // ── E. Decoy SL/TP obfuscation ────────────────────────────────────
+        const { decoySl, decoyTp } = config.useDecoySlTp
+            ? this.obfuscatePriceLevels(side as 'BUY' | 'SELL', symbol, masterSl, masterTp, config.decoyOffsetPips)
+            : { decoySl: masterSl, decoyTp: masterTp };
+
         const payload: ShieldedTradePayload = {
             volume: shieldedVolume,
             jitterMs,
@@ -104,6 +115,8 @@ export class PropFirmShieldService {
             comment,
             blockedByEquityGuard: blocked,
             blockReason: reason,
+            decoySl,
+            decoyTp,
         };
 
         // ── E. Async log (fire-and-forget — does NOT block the trade pipeline) ─
@@ -243,30 +256,119 @@ export class PropFirmShieldService {
         currentEquity: number,
         initialDailyEquity: number,
         totalStartEquity: number,
-        dailyLossLimit: number,
-        totalLossLimit: number,
+        dailyLossLimitPct: number,
+        totalLossLimitPct: number,
     ): { blocked: boolean; reason?: string } {
-        if (dailyLossLimit > 0) {
-            const dailyDrawdown = initialDailyEquity - currentEquity;
-            if (dailyDrawdown >= dailyLossLimit) {
+        if (dailyLossLimitPct > 0 && initialDailyEquity > 0) {
+            const dailyDrawdownPct = ((initialDailyEquity - currentEquity) / initialDailyEquity) * 100;
+            if (dailyDrawdownPct >= dailyLossLimitPct) {
                 return {
                     blocked: true,
-                    reason: `Daily loss limit reached: drawdown ${dailyDrawdown.toFixed(2)} >= limit ${dailyLossLimit}`,
+                    reason: `Daily loss limit reached: drawdown ${dailyDrawdownPct.toFixed(2)}% >= limit ${dailyLossLimitPct}%`,
                 };
             }
         }
 
-        if (totalLossLimit > 0) {
-            const totalDrawdown = totalStartEquity - currentEquity;
-            if (totalDrawdown >= totalLossLimit) {
+        if (totalLossLimitPct > 0 && totalStartEquity > 0) {
+            const totalDrawdownPct = ((totalStartEquity - currentEquity) / totalStartEquity) * 100;
+            if (totalDrawdownPct >= totalLossLimitPct) {
                 return {
                     blocked: true,
-                    reason: `Total loss limit reached: drawdown ${totalDrawdown.toFixed(2)} >= limit ${totalLossLimit}`,
+                    reason: `Total loss limit reached: drawdown ${totalDrawdownPct.toFixed(2)}% >= limit ${totalLossLimitPct}%`,
                 };
             }
         }
 
         return { blocked: false };
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // E. Decoy SL/TP Obfuscation
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Returns obfuscated SL and TP prices that are slightly farther from the
+     * entry price than the Master's original levels.
+     *
+     * Pip-to-price conversion:
+     *   - Most forex pairs (5-digit): 1 pip = 0.00010
+     *   - JPY pairs (3-digit):        1 pip = 0.010
+     *   - XAUUSD / indices (2-digit): 1 pip = 0.10
+     *
+     * The offset is randomised in [decoyOffsetPips / 2, decoyOffsetPips] to
+     * ensure no two slaves receive the same exact levels.
+     *
+     * Strict rule: if the Master did not set a SL or TP (value = 0), this
+     * method returns 0 — it will never fabricate a level that didn't exist.
+     */
+    obfuscatePriceLevels(
+        side: 'BUY' | 'SELL',
+        symbol: string,
+        masterSl: number,
+        masterTp: number,
+        maxOffsetPips: number,
+    ): { decoySl: number; decoyTp: number } {
+        // Determine pip size based on symbol
+        const pipSize = this.getPipSize(symbol);
+
+        // Determine digits for rounding
+        const digits = this.getDigits(symbol);
+
+        // Random offset in [maxOffsetPips / 2 … maxOffsetPips]
+        const halfMax = maxOffsetPips / 2;
+        const offsetPips = halfMax + Math.random() * halfMax;
+        const offsetPrice = parseFloat((offsetPips * pipSize).toFixed(digits));
+
+        const round = (val: number) => parseFloat(val.toFixed(digits));
+
+        let decoySl = masterSl;
+        let decoyTp = masterTp;
+
+        if (side === 'BUY') {
+            // SL is below entry → push it further down
+            if (masterSl > 0) decoySl = round(masterSl - offsetPrice);
+            // TP is above entry → push it further up
+            if (masterTp > 0) decoyTp = round(masterTp + offsetPrice);
+        } else {
+            // SL is above entry → push it further up
+            if (masterSl > 0) decoySl = round(masterSl + offsetPrice);
+            // TP is below entry → push it further down
+            if (masterTp > 0) decoyTp = round(masterTp - offsetPrice);
+        }
+
+        return { decoySl, decoyTp };
+    }
+
+    /**
+     * Returns the pip size (in price units) for a given symbol.
+     * Handles the most common cases: JPY pairs, XAU/indices, and standard forex.
+     */
+    private getPipSize(symbol: string): number {
+        const s = symbol.toUpperCase();
+        // Gold (XAUUSD / GOLD) and most indices: 1 pip = 0.10
+        if (s.includes('XAU') || s.includes('GOLD') || s.includes('SPX') ||
+            s.includes('NAS') || s.includes('GER') || s.includes('US30') ||
+            s.includes('OIL') || s.includes('WTI')) {
+            return 0.10;
+        }
+        // JPY pairs: 1 pip = 0.010
+        if (s.includes('JPY')) return 0.010;
+        // Standard 5-digit forex: 1 pip = 0.00010
+        return 0.00010;
+    }
+
+    /**
+     * Returns the number of decimal places used to round prices for a symbol.
+     */
+    private getDigits(symbol: string): number {
+        const s = symbol.toUpperCase();
+        if (s.includes('XAU') || s.includes('GOLD') || s.includes('SPX') ||
+            s.includes('NAS') || s.includes('GER') || s.includes('US30') ||
+            s.includes('OIL') || s.includes('WTI')) {
+            return 2;
+        }
+        if (s.includes('JPY')) return 3;
+        return 5;
     }
 
     // ─────────────────────────────────────────────────────────────────────────

@@ -9,7 +9,7 @@ import { SymbolMapping } from '../copy-engine/entities/symbol-mapping.entity';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('prop-firm-shield')
-@UseGuards(JwtAuthGuard)
+// @UseGuards(JwtAuthGuard)
 export class PropFirmShieldController {
     constructor(
         private readonly shieldService: PropFirmShieldService,

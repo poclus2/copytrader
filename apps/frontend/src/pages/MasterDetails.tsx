@@ -98,7 +98,7 @@ export default function MasterDetails() {
     const fetchAccountInfo = async () => {
         if (!master) return;
         try {
-            const r = await api.post('/brokers/metatrader/verify-connection', {
+            const r = await api.post('/brokers/metatrader/test-connection', {
                 ...master.credentials, platform: master.credentials.platform || 'mt5'
             });
             if (r.data.success && r.data.balance !== undefined) {
@@ -345,13 +345,13 @@ export default function MasterDetails() {
                                     <label className="form-label">Frais mensuel ($)</label>
                                     <input className="form-control" type="number" min="0" step="0.01"
                                         value={(master as any).monthlyFee || 0}
-                                        onChange={e => setMaster({ ...master, monthlyFee: parseFloat(e.target.value) } as any)} />
+                                        onChange={e => setMaster({ ...master, monthlyFee: e.target.value ? parseFloat(e.target.value) : 0 } as any)} />
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Score de risque (1–10)</label>
                                     <input className="form-control" type="number" min="1" max="10"
                                         value={(master as any).riskScore || 1}
-                                        onChange={e => setMaster({ ...master, riskScore: parseInt(e.target.value) } as any)} />
+                                        onChange={e => setMaster({ ...master, riskScore: e.target.value ? parseInt(e.target.value) : 1 } as any)} />
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Avatar URL</label>

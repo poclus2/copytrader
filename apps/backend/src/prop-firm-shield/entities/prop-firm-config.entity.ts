@@ -56,6 +56,20 @@ export class PropFirmConfig {
     @Column({ default: 'MNL_' })
     customCommentPrefix: string;
 
+    /**
+     * When true, SL and TP values sent to the slave broker are slightly
+     * offset from the Master values to prevent pattern detection.
+     */
+    @Column({ default: false })
+    useDecoySlTp: boolean;
+
+    /**
+     * Maximum pip offset applied randomly to obfuscated SL/TP levels.
+     * The actual offset is randomised between (decoyOffsetPips / 2) and decoyOffsetPips.
+     */
+    @Column({ type: 'int', default: 20 })
+    decoyOffsetPips: number;
+
     @CreateDateColumn()
     createdAt: Date;
 

@@ -136,6 +136,8 @@ export class CopyEngineService implements OnModuleInit, OnModuleDestroy {
                 side: side,
                 quantity: trade.volume,
                 price: trade.price,
+                sl: trade.sl,
+                tp: trade.tp,
                 originalTicket: trade.ticket,
                 masterTradeId: masterTrade.id, // Pass master trade ID for linking
             });
@@ -197,19 +199,71 @@ export class CopyEngineService implements OnModuleInit, OnModuleDestroy {
         // Fetch master account to get balance and equity for ratio calculations
         const master = await this.mastersService.findOne(masterId);
 
+        let liveMasterBalance = Number(master?.balance) || 0;
+        let liveMasterEquity = Number(master?.equity) || 0;
+        
+        // Fetch live master balance via Bridge (VERIFY command, no login check needed here)
+        if (master?.credentials?.bridgeIp && master?.credentials?.bridgePort) {
+             try {
+                 const masterVerify = await this.mt5BridgeService.verify({
+                     platform: 'mt5',
+                     login: String(master.credentials.login || ''),
+                     bridgeIp: master.credentials.bridgeIp,
+                     bridgePort: master.credentials.bridgePort,
+                     host: master.credentials.bridgeIp,
+                     port: master.credentials.bridgePort,
+                 });
+                 if (masterVerify.balance) {
+                     liveMasterBalance = masterVerify.balance;
+                     liveMasterEquity = masterVerify.equity || liveMasterBalance;
+                     // Optional: fire and forget update to db
+                     this.mastersService.update(masterId, { balance: liveMasterBalance, equity: liveMasterEquity } as any).catch(() => {});
+                 }
+             } catch (e) {
+                 this.logger.warn(`Failed to fetch live master balance: ${e.message}`);
+             }
+        }
+
         for (const slave of slaves) {
             if (!slave.isActive) continue;
 
             this.logger.log(`Copying to slave ${slave.id}`);
 
+            let liveSlaveBalance = Number(slave.balance) || 0;
+            let liveSlaveEquity = Number(slave.equity) || 0;
+
+            const isMetaTrader = slave.broker === 'metatrader' || (slave.credentials?.bridgeIp && slave.credentials?.bridgePort);
+
+            // Fetch live slave balance
+            if (isMetaTrader && slave.credentials?.bridgeIp && slave.credentials?.bridgePort) {
+                try {
+                    const slaveVerify = await this.mt5BridgeService.verify({
+                        platform: 'mt5',
+                        login: String(slave.credentials.login || ''),
+                        bridgeIp: slave.credentials.bridgeIp,
+                        bridgePort: slave.credentials.bridgePort,
+                        host: slave.credentials.bridgeIp,
+                        port: slave.credentials.bridgePort,
+                    });
+                    if (slaveVerify.balance) {
+                        liveSlaveBalance = slaveVerify.balance;
+                        liveSlaveEquity = slaveVerify.equity || liveSlaveBalance;
+                        // Optional: fire and forget update to db
+                        this.slavesService.update(slave.id, { balance: liveSlaveBalance, equity: liveSlaveEquity } as any).catch(() => {});
+                    }
+                } catch (e) {
+                    this.logger.warn(`Failed to fetch live slave balance: ${e.message}`);
+                }
+            }
+
             // 2. Calculate quantity with balance/equity if available
             const quantity = this.calculateQuantity(
                 trade.quantity,
                 slave.config,
-                master?.balance,
-                master?.equity,
-                slave.balance,
-                slave.equity
+                liveMasterBalance,
+                liveMasterEquity,
+                liveSlaveBalance,
+                liveSlaveEquity
             );
 
             // 0. Symbol Normalization (Global for all slaves)
@@ -244,6 +298,8 @@ export class CopyEngineService implements OnModuleInit, OnModuleDestroy {
             let finalQuantity = quantity;
             let shieldComment: string | undefined;
             let shieldMagicNumber: number | undefined;
+            let finalSl = trade.sl || 0;
+            let finalTp = trade.tp || 0;
 
             const shieldConfig = await this.propFirmShieldService.getConfig(slave.id);
             if (shieldConfig?.isEnabled) {
@@ -266,7 +322,9 @@ export class CopyEngineService implements OnModuleInit, OnModuleDestroy {
                     trade.symbol,
                     trade.side,
                     'OPEN',
-                    slave.broker
+                    slave.broker,
+                    trade.sl || 0,
+                    trade.tp || 0,
                 );
 
                 if (payload.blockedByEquityGuard) {
@@ -298,6 +356,15 @@ export class CopyEngineService implements OnModuleInit, OnModuleDestroy {
                     `[Shield] slave ${slave.id}: volume ${quantity} → ${finalQuantity}, ` +
                     `jitter ${payload.jitterMs}ms, comment "${shieldComment}"`
                 );
+
+                if (shieldConfig.useDecoySlTp && (trade.sl || trade.tp)) {
+                    finalSl = payload.decoySl;
+                    finalTp = payload.decoyTp;
+                    this.logger.log(
+                        `[Shield][Decoy SL/TP] slave ${slave.id}: ` +
+                        `SL ${trade.sl} → ${finalSl}, TP ${trade.tp} → ${finalTp}`
+                    );
+                }
             }
             // ─────────────────────────────────────────────────────────────────
 
@@ -319,6 +386,10 @@ export class CopyEngineService implements OnModuleInit, OnModuleDestroy {
                             symbol: finalSymbol,
                             type: trade.side,
                             volume: finalQuantity,
+                            sl: finalSl,
+                            tp: finalTp,
+                            comment: shieldComment,
+                            magicNumber: shieldMagicNumber
                         }
                     );
 
